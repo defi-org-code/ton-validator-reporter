@@ -18,6 +18,8 @@ class VersionController(object):
 	SLEEP_INTERVAL = 5 * 60
 	version = None
 
+	LOG_FILENAME = f'/var/log/ton-validator-reporter/version_controller.log'
+
 	def __init__(self):
 		super(VersionController, self).__init__()
 
