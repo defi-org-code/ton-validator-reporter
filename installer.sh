@@ -52,13 +52,17 @@ wget "${VALIDATOR_VC_DESCRIPTOR}"
 
 echo "adding ton-validator-reporter.service to systemd"
 cp 'ton-validator-reporter.service' '/etc/systemd/system/'
-#cp 'ton-validator-version-control.service' '/etc/systemd/system/'
+cp 'ton-validator-version-control.service' '/etc/systemd/system/'
 
 systemctl daemon-reload
 echo "restarting ton-validator-reporter.service"
 systemctl restart 'ton-validator-reporter.service'
-#systemctl restart 'ton-validator-version-control.service'
+
+echo "restarting ton-validator-version-control.service"
+systemctl restart 'ton-validator-version-control.service'
 
 echo "enable ton-validator-reporter.service on every boot"
 sudo systemctl enable 'ton-validator-reporter.service'
-#sudo systemctl enable 'ton-validator-version-control.service'
+
+echo "enable ton-validator-version-control.service on every boot"
+sudo systemctl enable 'ton-validator-version-control.service'
