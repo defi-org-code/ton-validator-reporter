@@ -5,7 +5,7 @@ import json
 from urllib import request
 from packaging import version
 from subprocess import call
-
+import logging
 
 class VersionController(object):
 	VERSION_DESCRIPTOR = 'https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/version.txt'
@@ -20,11 +20,15 @@ class VersionController(object):
 
 	def __init__(self):
 		super(VersionController, self).__init__()
+
+		logging.basicConfig(format='[%(asctime)s] %(filename)s:%(lineno)s - %(message)s', datefmt='%m-%d-%Y %H:%M:%S.%f', filename=self.LOG_FILENAME, level=logging.INFO)
+		self.log = logging
+
 		self.version = self.get_version()
 
 	def get_version(self):
 
-		print(f'reading version file from {self.REPORTER_PARAMS_FILE}')
+		self.log.info(f'reading version file from {self.REPORTER_PARAMS_FILE}')
 
 		orbs_validator_params = {}
 		if os.path.isfile(self.REPORTER_PARAMS_FILE):
@@ -33,11 +37,11 @@ class VersionController(object):
 
 		if 'version' not in orbs_validator_params:
 			orbs_validator_params['version'] = '0.0.0'
-			print(f'updating {self.REPORTER_PARAMS_FILE} with version {orbs_validator_params["version"]}')
+			self.log.info(f'updating {self.REPORTER_PARAMS_FILE} with version {orbs_validator_params["version"]}')
 			with open(self.REPORTER_PARAMS_FILE, 'w') as f:
 				json.dump(orbs_validator_params, f)
 
-		print(f'current version is {orbs_validator_params["version"]}')
+		self.log.info(f'current version is {orbs_validator_params["version"]}')
 		return version.Version(orbs_validator_params['version'])
 
 	def run(self):
@@ -52,19 +56,19 @@ class VersionController(object):
 					if curr_version > self.version:
 
 						if os.path.exists('installer.sh'):
-							print('removing old installer.sh')
+							self.log.info('removing old installer.sh')
 							os.remove('installer.sh')
 
-						print('downloading new installer.sh')
+						self.log.info('downloading new installer.sh')
 						request.urlretrieve(self.INSTALLER_DESCRIPTOR, 'installer.sh')
 						os.chmod('installer.sh', 777)
 						call("./installer.sh")
 
 			except Exception as e:
-				print(e)
+				self.log.info(e)
 
 			sleep_sec = self.SLEEP_INTERVAL - time.time() % self.SLEEP_INTERVAL
-			# self.log.info(f'sleep for {round(sleep_sec)} seconds')
+			self.log.info(f'sleep for {round(sleep_sec)} seconds')
 			time.sleep(sleep_sec)
 
 

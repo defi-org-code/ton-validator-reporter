@@ -35,7 +35,7 @@ class Reporter(object):
 	def __init__(self):
 		super(Reporter, self).__init__()
 
-		logging.basicConfig(format='[%(asctime)s] %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', filename=self.LOG_FILENAME, level=logging.INFO)
+		logging.basicConfig(format='[%(asctime)s] %(filename)s:%(lineno)s - %(message)s', datefmt='%m-%d-%Y %H:%M:%S.%f', filename=self.LOG_FILENAME, level=logging.INFO)
 		self.log = logging
 
 		self.log.info(f'validator reporter init started at {datetime.utcnow()}')
