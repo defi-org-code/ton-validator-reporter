@@ -1,8 +1,7 @@
-from urllib import request
-import json
+# from urllib import request
+# import json
 import os
-from git import Repo
-from wget import  download
+from wget import download
 
 DESCRIPTORS = {'main': 'https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/main.py'}
 REPORTER_DIR = f'/var/ton-validator-reporter'
@@ -41,5 +40,6 @@ def install():
 	# 	data = json.loads(url.read().decode())
 	# 	print(data)
 	#
+
 
 install()
