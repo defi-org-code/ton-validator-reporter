@@ -53,6 +53,8 @@ wget "${VALIDATOR_VC_DESCRIPTOR}"
 echo "adding ton-validator-reporter.service to systemd"
 cp 'ton-validator-reporter.service' '/etc/systemd/system/'
 cp 'ton-validator-version-control.service' '/etc/systemd/system/'
+cp 'reporter.py' ${SRC_DIR}
+cp 'version_controller.py' ${SRC_DIR}
 
 systemctl daemon-reload
 echo "restarting ton-validator-reporter.service"

@@ -14,7 +14,7 @@ from mypylib.mypylib import *
 
 
 class VersionController(object):
-	VERSION_DESCRIPTOR = ""
+	VERSION_DESCRIPTOR = 'https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/version.txt'
 
 	SECONDS_IN_YEAR = 365 * 24 * 3600
 	SLEEP_INTERVAL = 60
@@ -29,6 +29,7 @@ class VersionController(object):
 			try:
 				with request.urlopen(self.VERSION_DESCRIPTOR) as url:
 					data = json.loads(url.read().decode())
+
 					print(data)
 
 			except Exception as e:
