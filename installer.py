@@ -1,7 +1,7 @@
 # from urllib import request
 # import json
 import os
-from wget import download
+import requests
 
 DESCRIPTORS = {'main': 'https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/main.py'}
 REPORTER_DIR = f'/var/ton-validator-reporter'
@@ -24,12 +24,14 @@ def install():
 		print(f'creating reporter directory at {SRC_DIR}')
 		os.mkdir(SRC_DIR, 777)
 
-	download(DESCRIPTORS['main'])
+	requests.get(DESCRIPTORS['main'])
+	open('facebook.ico', 'w').write(r.content)
+
 	# download source to /usr/src/ton-validator-reporter/version-controller.py
 	# download source to /usr/src/ton-validator-reporter/main.py
 
 	# download ton-validator-reporter.service to /etc/systemd/system/
-	# download ton-validator-version-ctrl.service to /etc/systemd/system/
+	# download ton-validator-version-control.service to /etc/systemd/system/
 	# systemd reload, start service
 
 	# create log file
