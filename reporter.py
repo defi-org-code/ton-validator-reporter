@@ -27,15 +27,16 @@ class Reporter(object):
 	REPORTER_FILE = f'{REPORTER_DIR}/report.json'
 	orbs_validator_params = dict()
 	validation_cycle_in_seconds = None
-	LOG_FILENAME = f'{HOME}/.local/share/ton-validator-reporter/out.log'
+	LOG_FILENAME = f'/var/log/ton-validator-reporter/reporter.log'
 
 	SECONDS_IN_YEAR = 365 * 24 * 3600
 	SLEEP_INTERVAL = 5 * 60
 
 	def __init__(self):
 		super(Reporter, self).__init__()
+
+		logging.basicConfig(format='[%(asctime)s] %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', filename=self.LOG_FILENAME, level=logging.INFO)
 		self.log = logging
-		self.log.basicConfig(format='[%(asctime)s] %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', filename=self.LOG_FILENAME, level=logging.INFO)
 
 		self.log.info(f'validator reporter init started at {datetime.utcnow()}')
 		self.ton = mytonctrl.MyTonCore()
@@ -45,11 +46,6 @@ class Reporter(object):
 	def get_set_init_wallet_balance(self):
 
 		# TODO: create LOG_FILENAME on installer
-
-		# TODO: move to installer script
-		if not os.path.isdir(self.REPORTER_DIR):
-			self.log.info(f'creating reporter directory at {self.REPORTER_DIR}')
-			RunAsRoot(['mkdir', '-m', '777', self.REPORTER_DIR])
 
 		orbs_validator_params = {}
 		if os.path.isfile(self.REPORTER_PARAMS_FILE):

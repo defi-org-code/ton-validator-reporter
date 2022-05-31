@@ -14,6 +14,8 @@ REPORTER_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validato
 VALIDATOR_REPORTER_SERVICE_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/ton-validator-reporter.service
 VALIDATOR_VC_SERVICE_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/ton-validator-version-control.service
 VALIDATOR_VC_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/version_controller.py
+REPORTER_FILENAME=/var/log/ton-validator-reporter/reporter.log
+VC_FILENAME=/var/log/ton-validator-reporter/version_controller.log
 
 if [ -d "${INSTALLER_DIR}" ]; then
 	echo "removing ${INSTALLER_DIR}"
@@ -35,6 +37,20 @@ if [ -d ${REPORTER_DIR} ]; then
 	echo "${REPORTER_DIR} exists"
 else
 	mkdir -m 777 "${REPORTER_DIR}"
+fi
+
+if [ -f ${REPORTER_FILENAME} ]; then
+	echo "${REPORTER_FILENAME} exists"
+else
+	touch ${REPORTER_FILENAME}
+	chmod 777 $REPORTER_FILENAME
+fi
+
+if [ -f ${VC_FILENAME} ]; then
+	echo "${VC_FILENAME} exists"
+else
+	touch ${VC_FILENAME}
+	chmod 777 $VC_FILENAME
 fi
 
 
