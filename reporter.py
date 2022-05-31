@@ -35,7 +35,7 @@ class Reporter(object):
 	def __init__(self):
 		super(Reporter, self).__init__()
 		self.log = logging
-		self.log.basicConfig(format='[%(asctime)s] %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', filename=self.LOG_FILENAME)
+		self.log.basicConfig(format='[%(asctime)s] %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', filename=self.LOG_FILENAME, level=logging.INFO)
 
 		self.log.info(f'validator reporter init started at {datetime.utcnow()}')
 		self.ton = mytonctrl.MyTonCore()
