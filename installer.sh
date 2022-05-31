@@ -74,12 +74,12 @@ cp 'ton-validator-version-control.service' '/etc/systemd/system/'
 cp 'reporter.py' ${SRC_DIR}
 cp 'version_controller.py' ${SRC_DIR}
 
-systemctl daemon-reload
+sudo systemctl daemon-reload
 echo "restarting ton-validator-reporter.service"
-systemctl restart 'ton-validator-reporter.service'
+sudo systemctl restart 'ton-validator-reporter.service'
 
 echo "restarting ton-validator-version-control.service"
-systemctl restart 'ton-validator-version-control.service'
+sudo systemctl restart 'ton-validator-version-control.service'
 
 echo "enable ton-validator-reporter.service on every boot"
 sudo systemctl enable 'ton-validator-reporter.service'

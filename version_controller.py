@@ -57,14 +57,16 @@ class VersionController(object):
 
 					if curr_version > self.version:
 
-						if os.path.exists('installer.sh'):
+						if os.path.exists('/tmp/installer.sh'):
 							self.log.info('removing old installer.sh')
-							os.remove('installer.sh')
+							os.remove('/tmp/installer.sh')
 
 						self.log.info('downloading new installer.sh')
-						request.urlretrieve(self.INSTALLER_DESCRIPTOR, 'installer.sh')
-						os.chmod('installer.sh', 777)
-						call("./installer.sh")
+						request.urlretrieve(self.INSTALLER_DESCRIPTOR, '/tmp/installer.sh')
+						self.log.info('chmod /tmp/installer.sh')
+						os.chmod('/tmp/installer.sh', 1411)
+						# os.system("chmod 777 /tmp/installer.sh")
+						call("./tmp/installer.sh")
 
 			except Exception as e:
 				self.log.info(e)
