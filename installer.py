@@ -4,7 +4,7 @@ import os
 from git import Repo
 from wget import  download
 
-DESCRIPTOR = 'https://github.com/orbs-network/management-service.git'
+DESCRIPTORS = {'main': 'https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/main.py'}
 REPORTER_DIR = f'/var/ton-validator-reporter'
 SRC_DIR = f'/usr/src/ton-validator-reporter'
 
@@ -25,7 +25,7 @@ def install():
 		print(f'creating reporter directory at {SRC_DIR}')
 		os.mkdir(SRC_DIR, 777)
 
-	download()
+	download(DESCRIPTORS['main'])
 	# download source to /usr/src/ton-validator-reporter/version-controller.py
 	# download source to /usr/src/ton-validator-reporter/main.py
 
@@ -37,9 +37,9 @@ def install():
 
 	# other tasks...
 
-	with request.urlopen(DESCRIPTOR) as url:
-		data = json.loads(url.read().decode())
-		print(data)
-
+	# with request.urlopen(DESCRIPTOR) as url:
+	# 	data = json.loads(url.read().decode())
+	# 	print(data)
+	#
 
 install()
