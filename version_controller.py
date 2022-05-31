@@ -49,8 +49,6 @@ class VersionController(object):
 					data = url.read().decode().strip()
 					curr_version = version.parse(data)
 
-					print(curr_version, self.version)
-
 					if curr_version > self.version:
 
 						if os.path.exists('installer.sh'):
