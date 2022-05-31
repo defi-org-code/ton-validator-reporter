@@ -1,0 +1,15 @@
+[Unit]
+Description=Ton Validator Reported by ORBS
+After=validator.service
+
+[Service]
+User=orbs
+WorkingDirectory=/usr/src/ton-validator-reporter/
+ExecStart=python3 main.py
+Restart=always
+RestartSec=30
+[StandardOutput=append:/var/log/ton-validator-reporter/out.log]
+[StandardError=append:/var/log/ton-validator-reporter/error.log]
+
+[Install]
+WantedBy=multi-user.target
