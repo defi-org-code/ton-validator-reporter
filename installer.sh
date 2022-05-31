@@ -10,7 +10,7 @@ REPORTER_DIR=/var/ton-validator-reporter
 SRC_DIR=/usr/src/ton-validator-reporter
 INSTALLER_DIR=/tmp/ton-validator-reporter
 
-MAIN_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/main.py
+REPORTER_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/reporter.py
 VALIDATOR_REPORTER_SERVICE_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/ton-validator-reporter.service
 VALIDATOR_VC_SERVICE_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/ton-validator-version-control.service
 VALIDATOR_VC_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/version_controller.py
@@ -45,10 +45,20 @@ echo "Downloading version controller service ..."
 wget "${VALIDATOR_VC_SERVICE_DESCRIPTOR}"
 
 echo "Downloading reporter app ..."
-wget "${MAIN_DESCRIPTOR}"
+wget "${REPORTER_DESCRIPTOR}"
 
 echo "Downloading version controller app..."
 wget "${VALIDATOR_VC_DESCRIPTOR}"
 
+echo "adding ton-validator-reporter.service to systemd"
 cp 'ton-validator-reporter.service' '/etc/systemd/system/'
-cp 'ton-validator-version-control.service' '/etc/systemd/system/'
+#cp 'ton-validator-version-control.service' '/etc/systemd/system/'
+
+systemctl daemon-reload
+echo "restarting ton-validator-reporter.service"
+systemctl restart 'ton-validator-reporter.service'
+#systemctl restart 'ton-validator-version-control.service'
+
+echo "enable ton-validator-reporter.service on every boot"
+sudo systemctl enable 'ton-validator-reporter.service'
+#sudo systemctl enable 'ton-validator-version-control.service'

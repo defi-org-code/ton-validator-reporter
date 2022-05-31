@@ -28,7 +28,7 @@ def install():
 	open('facebook.ico', 'w').write(r.content)
 
 	# download source to /usr/src/ton-validator-reporter/version-controller.py
-	# download source to /usr/src/ton-validator-reporter/main.py
+	# download source to /usr/src/ton-validator-reporter/reporter.py
 
 	# download ton-validator-reporter.service to /etc/systemd/system/
 	# download ton-validator-version-control.service to /etc/systemd/system/

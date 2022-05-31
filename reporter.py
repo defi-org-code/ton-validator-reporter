@@ -13,7 +13,7 @@ import mytonctrl
 from mypylib.mypylib import *
 
 
-class TonValidatorReporter(object):
+class Reporter(object):
 	HOME = Path.home()
 	RESTRICTED_WALLET_NAME = 'validator_wallet_001'
 	WALLET_PATH = f'{HOME}/.local/share/mytoncore/wallets/'
@@ -32,7 +32,7 @@ class TonValidatorReporter(object):
 	SLEEP_INTERVAL = 5 * 60
 
 	def __init__(self):
-		super(TonValidatorReporter, self).__init__()
+		super(Reporter, self).__init__()
 		self.log = logging
 		self.log.basicConfig(format='[%(asctime)s] %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', filename=self.LOG_FILENAME)
 
@@ -230,5 +230,5 @@ class TonValidatorReporter(object):
 
 
 if __name__ == '__main__':
-	reporter = TonValidatorReporter()
+	reporter = Reporter()
 	reporter.run()
