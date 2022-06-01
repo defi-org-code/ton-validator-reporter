@@ -1,6 +1,6 @@
 [Unit]
 Description=Ton Validator Reported by ORBS
-After=reporter.service
+After=validator.service
 
 [Service]
 User=orbs
