@@ -21,13 +21,13 @@ class Reporter(object):
 	WALLET_PK_PATH = f'{WALLET_PATH}/{RESTRICTED_WALLET_NAME}.pk'
 	WALLET_ADDR_PATH = f'{WALLET_PATH}/{RESTRICTED_WALLET_NAME}.addr'
 	MYTONCORE_FILE_PATH = f'{HOME}/.local/share/mytoncore/mytoncore.db'
-	REPORTER_DIR = f'/var/ton-validator-reporter'
+	REPORTER_DIR = f'/var/reporter'
 	REPORTER_PARAMS_FILE = f'{REPORTER_DIR}/params.json'
 	MYTONCORE_PATH = '/usr/src'
 	REPORTER_FILE = f'{REPORTER_DIR}/report.json'
 	orbs_validator_params = dict()
 	validation_cycle_in_seconds = None
-	LOG_FILENAME = f'/var/log/ton-validator-reporter/reporter.log'
+	LOG_FILENAME = f'/var/log/reporter/reporter.log'
 
 	SECONDS_IN_YEAR = 365 * 24 * 3600
 	SLEEP_INTERVAL = 5 * 60

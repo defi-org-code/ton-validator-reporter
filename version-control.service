@@ -4,7 +4,7 @@ After=validator.service
 
 [Service]
 User=orbs
-WorkingDirectory=/usr/src/ton-validator-reporter/
+WorkingDirectory=/usr/src/reporter/
 ExecStart=python3 version_controller.py
 Restart=always
 RestartSec=30

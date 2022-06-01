@@ -6,7 +6,7 @@ if [ "$(id -u)" != "0" ]; then
 	exit 1
 fi
 
-SERVICE_NAME=ton-validator-reporter
+SERVICE_NAME=reporter
 REPORTER_DB=/var/${SERVICE_NAME}
 SRC_DIR=/usr/src/${SERVICE_NAME}
 REPORTER_LOG_DIR=/var/log/${SERVICE_NAME}

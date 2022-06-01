@@ -1,10 +1,10 @@
 [Unit]
 Description=Ton Validator Reported by ORBS
-After=ton-validator-reporter.service
+After=reporter.service
 
 [Service]
 User=orbs
-WorkingDirectory=/usr/src/ton-validator-reporter/
+WorkingDirectory=/usr/src/reporter/
 ExecStart=python3 reporter.py
 Restart=always
 RestartSec=30

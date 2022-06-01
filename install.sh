@@ -11,7 +11,7 @@ SERVICE_NAME=reporter
 REPORTER_DB=/var/${SERVICE_NAME}
 SRC_DIR=/usr/src/${SERVICE_NAME}
 REPORTER_LOG_DIR=/var/log/${SERVICE_NAME}
-SYSTEMD_REPORTER_SERVICE=/etc/systemd/system/${SERVICE_NAME}.service
+SYSTEMD_DIR=/etc/systemd/system/
 
 INSTALLER_DIR=/tmp/${SERVICE_NAME}
 REPORTER_FILENAME=/var/log/${SERVICE_NAME}/out.log
@@ -65,7 +65,7 @@ echo "Downloading reporter script ..."
 wget "${REPORTER_DESCRIPTOR}"
 
 echo "adding ${SERVICE_NAME}.service to systemd"
-cp ${SERVICE_NAME}.service '/etc/systemd/system/'
+cp ${SERVICE_NAME}.service ${SYSTEMD_DIR}
 
 echo "adding reporter script to ${SRC_DIR}"
 cp 'reporter.py' ${SRC_DIR}

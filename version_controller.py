@@ -11,14 +11,14 @@ class VersionController(object):
 	VERSION_DESCRIPTOR = 'https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/version.txt'
 	INSTALLER_DESCRIPTOR = 'https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/installer.sh'
 
-	REPORTER_DIR = f'/var/ton-validator-reporter'
+	REPORTER_DIR = f'/var/reporter'
 	REPORTER_PARAMS_FILE = f'{REPORTER_DIR}/params.json'
 
 	SECONDS_IN_YEAR = 365 * 24 * 3600
 	SLEEP_INTERVAL = 5 * 60
 	version = None
 
-	LOG_FILENAME = f'/var/log/ton-validator-reporter/version_controller.log'
+	LOG_FILENAME = f'/var/log/reporter/version_controller.log'
 
 	def __init__(self):
 		super(VersionController, self).__init__()
