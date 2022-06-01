@@ -14,7 +14,6 @@ REPORTER_LOG_DIR=/var/log/${SERVICE_NAME}
 SYSTEMD_DIR=/etc/systemd/system/
 
 INSTALLER_DIR=/tmp/${SERVICE_NAME}
-REPORTER_FILENAME=/var/log/${SERVICE_NAME}/out.log
 
 REPORTER_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/reporter.py
 VALIDATOR_REPORTER_SERVICE_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/${SERVICE_NAME}.service
@@ -48,14 +47,6 @@ if [ -d ${REPORTER_LOG_DIR} ]; then
 else
 	echo "creating ${REPORTER_LOG_DIR}"
 	mkdir -m 777 "${REPORTER_LOG_DIR}"
-fi
-
-if [ -f ${REPORTER_FILENAME} ]; then
-	echo "${REPORTER_FILENAME} exists"
-else
-	echo "creating ${REPORTER_FILENAME}"
-	touch ${REPORTER_FILENAME}
-	chmod 777 $REPORTER_FILENAME
 fi
 
 echo "Downloading ${SERVICE_NAME}.service ..."

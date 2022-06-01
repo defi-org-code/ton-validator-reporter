@@ -209,7 +209,7 @@ class Reporter(object):
 				res['last_cycle_apr'] = self.last_cycle_apr(available_validator_balance, res['local_stake'])
 				res['aggregated_apr'] = self.aggregated_apr(res['total_validator_balance'], res['local_stake'])
 				res['validator_load'] = self.get_validator_load(validator_index)
-				res['update_time'] = datetime.utcnow()
+				res['update_time'] = time.time()
 				self.report(res)
 				self.log.info(res)
 
