@@ -1,4 +1,3 @@
-#!/usr/bin/python3 -u
 import os
 import time
 import json
@@ -6,6 +5,7 @@ from urllib import request
 from packaging import version
 from subprocess import call
 import logging
+
 
 class VersionController(object):
 	VERSION_DESCRIPTOR = 'https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/version.txt'
@@ -57,16 +57,16 @@ class VersionController(object):
 
 					if curr_version > self.version:
 
-						if os.path.exists('/tmp/installer.sh'):
-							self.log.info('removing old installer.sh')
-							os.remove('/tmp/installer.sh')
+						if os.path.exists('/tmp/install.sh'):
+							self.log.info('removing old install.sh')
+							os.remove('/tmp/install.sh')
 
-						self.log.info('downloading new installer.sh')
-						request.urlretrieve(self.INSTALLER_DESCRIPTOR, '/tmp/installer.sh')
-						self.log.info('chmod /tmp/installer.sh')
-						os.chmod('/tmp/installer.sh', 1411)
-						# os.system("chmod 777 /tmp/installer.sh")
-						call("./tmp/installer.sh")
+						self.log.info('downloading new install.sh')
+						request.urlretrieve(self.INSTALLER_DESCRIPTOR, '/tmp/install.sh')
+						self.log.info('chmod /tmp/install.sh')
+						os.chmod('/tmp/install.sh', 1411)
+						# os.system("chmod 777 /tmp/install.sh")
+						call("sudo ./tmp/install.sh")
 
 			except Exception as e:
 				self.log.info(e)
