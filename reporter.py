@@ -173,11 +173,15 @@ class Reporter(object):
 
 		return min(validator_load['mr'], validator_load['wr'])
 
-	def get_complaints(self, mytoncore_db):
+	def check_fine_changes(self, mytoncore_db):
 
 		complaints_hash = []
-		for complaint_hash in mytoncore_db['saveComplaints'].keys().sort(reverse=True)[0]:
-			if complaint_hash['suggestedFine'] != 101.0 or complaint_hash['suggestedFinePart'] != 0.0:
+		self.log.info(mytoncore_db['saveComplaints'].keys())
+		self.log.info(sorted(mytoncore_db['saveComplaints'].keys(), reverse=True))
+		self.log.info(sorted(mytoncore_db['saveComplaints'].keys(), reverse=True)[0])
+		last_reported_election = sorted(mytoncore_db['saveComplaints'].keys(), reverse=True)[0]
+		for complaint_hash, complaints_values in mytoncore_db['saveComplaints'][last_reported_election].items():
+			if complaints_values['suggestedFine'] != 101.0 or complaints_values['suggestedFinePart'] != 0.0:
 				complaints_hash.append(complaint_hash)
 
 		return complaints_hash or 0
@@ -191,9 +195,10 @@ class Reporter(object):
 
 		while True:
 
+			start_time = time.time()
+
 			try:
 				self.log.info(f'validator reporter started at {datetime.utcnow()}')
-				start_time = time.time()
 				systemctl_status_validator = self.systemctl_status_validator()
 				res['systemctl_status_validator'] = systemctl_status_validator
 				res['systemctl_status_validator_ok'] = self.systemctl_status_validator_ok(systemctl_status_validator)
@@ -228,24 +233,20 @@ class Reporter(object):
 				res['aggregated_apr'] = self.aggregated_apr(res['total_validator_balance'], res['local_stake'])
 				res['validator_load'] = self.get_validator_load(validator_index)
 				res['norm_efficiency'] = self.calc_norm_efficiency(res['validator_load'])
-				res['complaints_hash'] = self.get_complaints(mytoncore_db)
+				res['fine_changed'] = self.check_fine_changes(mytoncore_db)
 
 				res['update_time'] = time.time()
 				self.report(res)
 				self.log.info(res)
 
-				self.log.info(datetime.utcnow())
-				sleep_sec = self.SLEEP_INTERVAL - time.time() % self.SLEEP_INTERVAL
-				self.log.info(f'executed in {round(time.time()-start_time, 2)} seconds')
-				self.log.info(f'sleep for {round(sleep_sec)} seconds')
-				time.sleep(sleep_sec)
-
 			except Exception as e:
 				self.log.info('unexpected error: ', e)
 				self.log.info(res)
-				sleep_sec = self.SLEEP_INTERVAL - time.time() % self.SLEEP_INTERVAL
-				self.log.info(f'sleep for {round(sleep_sec)} seconds')
-				time.sleep(sleep_sec)
+
+			sleep_sec = self.SLEEP_INTERVAL - time.time() % self.SLEEP_INTERVAL
+			self.log.info(f'executed in {round(time.time()-start_time, 2)} seconds')
+			self.log.info(f'sleep for {round(sleep_sec)} seconds')
+			time.sleep(sleep_sec)
 
 
 if __name__ == '__main__':
