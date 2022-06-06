@@ -180,7 +180,7 @@ class Reporter(object):
 			if complaint_hash['suggestedFine'] != 101.0 or complaint_hash['suggestedFinePart'] != 0.0:
 				complaints_hash.append(complaint_hash)
 
-		return complaints_hash
+		return complaints_hash or 0
 
 	def report(self, res):
 		with open(self.REPORTER_FILE, 'w') as f:
