@@ -32,6 +32,8 @@ class Reporter(object):
 	SECONDS_IN_YEAR = 365 * 24 * 3600
 	SLEEP_INTERVAL = 5 * 60
 
+	NORM_EFFICIENCY_NULL = 100
+
 	def __init__(self):
 		super(Reporter, self).__init__()
 
@@ -140,7 +142,7 @@ class Reporter(object):
 	def last_cycle_apr(self, local_wallet_balance, stake_amount):
 		# we assume here that every cycle we will stake stake_amount (get stake to read this number)
 		# and everything is returned to the local wallet
-		# we do not use the rewards generated in this process but they are taken in account for the apr calc
+		# we do not use the rewards generated in this process (stake is not increased every validation cycle) but they are taken in account for the apr calc
 		# we should optimize by increase the stake_amount to move from apr to apy
 		if stake_amount > local_wallet_balance:
 			return 0
@@ -163,6 +165,22 @@ class Reporter(object):
 			'mr': validators_load[validator_id]['mr'],
 			'wr': validators_load[validator_id]['wr'],
 		}
+
+	def calc_norm_efficiency(self, validator_load):
+
+		if validator_load == -1:
+			return self.NORM_EFFICIENCY_NULL
+
+		return min(validator_load['mr'], validator_load['wr'])
+
+	def get_complaints(self, mytoncore_db):
+
+		complaints_hash = []
+		for complaint_hash in mytoncore_db['saveComplaints'].keys().sort(reverse=True)[0]:
+			if complaint_hash['suggestedFine'] != 101.0 or complaint_hash['suggestedFinePart'] != 0.0:
+				complaints_hash.append(complaint_hash)
+
+		return complaints_hash
 
 	def report(self, res):
 		with open(self.REPORTER_FILE, 'w') as f:
@@ -209,6 +227,9 @@ class Reporter(object):
 				res['last_cycle_apr'] = self.last_cycle_apr(available_validator_balance, res['local_stake'])
 				res['aggregated_apr'] = self.aggregated_apr(res['total_validator_balance'], res['local_stake'])
 				res['validator_load'] = self.get_validator_load(validator_index)
+				res['norm_efficiency'] = self.calc_norm_efficiency(res['validator_load'])
+				res['complaints_hash'] = self.get_complaints(mytoncore_db)
+
 				res['update_time'] = time.time()
 				self.report(res)
 				self.log.info(res)
