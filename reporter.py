@@ -12,6 +12,7 @@ sys.path.append('/usr/src/mytonctrl')
 
 import mytonctrl
 from mypylib.mypylib import *
+from mytoncore import GetMemoryInfo
 
 
 class Reporter(object):
@@ -32,7 +33,7 @@ class Reporter(object):
 	SECONDS_IN_YEAR = 365 * 24 * 3600
 	SLEEP_INTERVAL = 1 * 60
 
-	NORM_EFFICIENCY_NULL = 100
+	MIN_EFFICIENCY_NULL = 100
 
 	def __init__(self):
 		super(Reporter, self).__init__()
@@ -132,19 +133,19 @@ class Reporter(object):
 
 		return int(next((item for item in mytoncore_db['saveElections'][election_id].values() if item['walletAddr'] == wallet_addr), None) is not None)
 
-	def aggregated_apr(self, total_balance, stake_amount):
+	def aggregated_apr(self, total_balance, stake_amount, min_stake_amount=315000):
 
-		if total_balance < stake_amount:
+		if total_balance < stake_amount or stake_amount < min_stake_amount:
 			return 0
 
 		return 100 * (total_balance / self.orbs_validator_params['wallet_init_balance'] - 1)
 
-	def last_cycle_apr(self, local_wallet_balance, stake_amount):
+	def last_cycle_apr(self, local_wallet_balance, stake_amount, min_stake_amount=315000):
 		# we assume here that every cycle we will stake stake_amount (get stake to read this number)
 		# and everything is returned to the local wallet
 		# we do not use the rewards generated in this process (stake is not increased every validation cycle) but they are taken in account for the apr calc
 		# we should optimize by increase the stake_amount to move from apr to apy
-		if stake_amount > local_wallet_balance:
+		if stake_amount > local_wallet_balance or stake_amount < min_stake_amount:
 			return 0
 
 		return 100 * (local_wallet_balance / stake_amount - 1) * self.SECONDS_IN_YEAR / self.validation_cycle_in_seconds
@@ -166,25 +167,79 @@ class Reporter(object):
 			'wr': validators_load[validator_id]['wr'],
 		}
 
-	def calc_norm_efficiency(self, validator_load):
+	def calc_min_efficiency(self, validator_load):
 
 		if validator_load == -1:
-			return self.NORM_EFFICIENCY_NULL
+			return self.MIN_EFFICIENCY_NULL
 
 		return min(validator_load['mr'], validator_load['wr'])
 
 	def check_fine_changes(self, mytoncore_db):
 
 		complaints_hash = []
-		self.log.info(mytoncore_db['saveComplaints'].keys())
-		self.log.info(sorted(mytoncore_db['saveComplaints'].keys(), reverse=True))
-		self.log.info(sorted(mytoncore_db['saveComplaints'].keys(), reverse=True)[0])
 		last_reported_election = sorted(mytoncore_db['saveComplaints'].keys(), reverse=True)[0]
 		for complaint_hash, complaints_values in mytoncore_db['saveComplaints'][last_reported_election].items():
 			if complaints_values['suggestedFine'] != 101.0 or complaints_values['suggestedFinePart'] != 0.0:
 				complaints_hash.append(complaint_hash)
 
 		return complaints_hash or 0
+
+	def get_load_stats(self, mytoncore_db):
+
+		net_load_avg = mytoncore_db['statistics']['netLoadAvg'][1]
+		sda_load_avg_pct = mytoncore_db['statistics']['disksLoadPercentAvg']['sda'][1]
+		sdb_load_avg_pct = mytoncore_db['statistics']['disksLoadPercentAvg']['sdb'][1]
+		disk_load_pct_avg = max(sda_load_avg_pct, sdb_load_avg_pct)
+
+		mem_info = GetMemoryInfo()
+		mem_load_avg = mem_info['usagePercent']
+
+		return net_load_avg, disk_load_pct_avg, mem_load_avg
+
+	def recovery_and_alert(self, res):
+
+		res['exit'] = 0
+		res['exit_message'] = ''
+		res['recovery'] = 0
+		res['recovery_message'] = ''
+
+		if res['min_efficiency'] < .85:
+			res['exit'] = 1
+			res['recovery'] = 1
+			res['exit_message'] += f'min_efficiency = {res["min_efficiency"]}; '
+			res['recovery_message'] += f'min_efficiency = {res["min_efficiency"]}; '
+
+		if res['fine_changed'] != 0:
+			res['exit'] = 1
+			res['recovery'] = 1
+			res['exit_message'] += f'fine_changed = {res["fine_changed"]}; '
+			res['recovery_message'] += f'fine_changed = {res["fine_changed"]}; '
+
+		if res['systemctl_status_validator_ok'] != 1:
+			res['recovery'] = 1
+			res['recovery_message'] += f'systemctl_status_validator_ok = {res["systemctl_status_validator_ok"]}; '
+
+		if res['out_of_sync'] > 50:
+			res['recovery'] = 1
+			res['recovery_message'] += f'out_of_sync = {res["out_of_sync"]}; '
+
+		if res['mem_load_avg'] > 85:
+			res['recovery'] = 1
+			res['recovery_message'] += f'mem_load_avg = {res["mem_load_avg"]}; '
+
+		if res['disk_load_pct_avg'] > 85:
+			res['recovery'] = 1
+			res['recovery_message'] += f'disk_load_pct_avg = {res["disk_load_pct_avg"]}; '
+
+		if res['net_load_avg'] > 400:
+			res['recovery'] = 1
+			res['recovery_message'] += f'net_load_avg = {res["net_load_avg"]}; '
+
+		if res['exit_message'] != '':
+			res['exit_message'] = '[EXIT ALERT] ' + res['exit_message']
+
+		if res['recovery_message'] != '':
+			res['recovery_message'] = '[RECOVERY ALERT] ' + res['recovery_message']
 
 	def report(self, res):
 		with open(self.REPORTER_FILE, 'w') as f:
@@ -232,8 +287,11 @@ class Reporter(object):
 				res['last_cycle_apr'] = self.last_cycle_apr(available_validator_balance, res['local_stake'])
 				res['aggregated_apr'] = self.aggregated_apr(res['total_validator_balance'], res['local_stake'])
 				res['validator_load'] = self.get_validator_load(validator_index)
-				res['norm_efficiency'] = self.calc_norm_efficiency(res['validator_load'])
+				res['min_efficiency'] = self.calc_min_efficiency(res['validator_load'])
 				res['fine_changed'] = self.check_fine_changes(mytoncore_db)
+				res['net_load_avg'], res['disk_load_pct_avg'], res['mem_load_avg'] = self.get_load_stats(mytoncore_db)
+
+				self.recovery_and_alert(res)
 
 				# TODO: add hash on contracts, check that contracts address wasn't changed
 				# TODO: any change on network - set stake to 0
@@ -245,7 +303,7 @@ class Reporter(object):
 				self.log.info(res)
 
 			except Exception as e:
-				self.log.info('unexpected error: ', e)
+				self.log.info(f'unexpected error: {e}')
 				self.log.info(res)
 
 			sleep_sec = self.SLEEP_INTERVAL - time.time() % self.SLEEP_INTERVAL
