@@ -30,7 +30,7 @@ class Reporter(object):
 	LOG_FILENAME = f'/var/log/reporter/reporter.log'
 
 	SECONDS_IN_YEAR = 365 * 24 * 3600
-	SLEEP_INTERVAL = 5 * 60
+	SLEEP_INTERVAL = 1 * 60
 
 	NORM_EFFICIENCY_NULL = 100
 
@@ -234,6 +234,11 @@ class Reporter(object):
 				res['validator_load'] = self.get_validator_load(validator_index)
 				res['norm_efficiency'] = self.calc_norm_efficiency(res['validator_load'])
 				res['fine_changed'] = self.check_fine_changes(mytoncore_db)
+
+				# TODO: add hash on contracts, check that contracts address wasn't changed
+				# TODO: any change on network - set stake to 0
+				# TODO: exit if total stake reduce - number of stakers (<80%) or total stake (<80%)
+				# TODO: how to check if network was upgraded
 
 				res['update_time'] = time.time()
 				self.report(res)

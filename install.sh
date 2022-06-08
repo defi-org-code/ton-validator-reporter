@@ -17,6 +17,7 @@ INSTALLER_DIR=/tmp/${SERVICE_NAME}
 
 REPORTER_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/reporter.py
 VALIDATOR_REPORTER_SERVICE_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/${SERVICE_NAME}.service
+EXIT_STAKE_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/exit_stake.py
 
 if [ -d "${INSTALLER_DIR}" ]; then
 	echo "removing ${INSTALLER_DIR}"
@@ -55,11 +56,17 @@ wget "${VALIDATOR_REPORTER_SERVICE_DESCRIPTOR}"
 echo "Downloading reporter script ..."
 wget "${REPORTER_DESCRIPTOR}"
 
+echo "Downloading exit_stake script ..."
+wget "${EXIT_STAKE_DESCRIPTOR}"
+
 echo "adding ${SERVICE_NAME}.service to systemd"
 cp ${SERVICE_NAME}.service ${SYSTEMD_DIR}
 
 echo "adding reporter script to ${SRC_DIR}"
 cp 'reporter.py' ${SRC_DIR}
+
+echo "adding exit_stake script to ${SRC_DIR}"
+cp 'exit_stake.py' ${SRC_DIR}
 
 echo "restarting ${SERVICE_NAME}.service"
 sudo systemctl daemon-reload
