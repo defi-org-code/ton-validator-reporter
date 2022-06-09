@@ -41,6 +41,15 @@ class Reporter(object):
 		logging.basicConfig(format='[%(asctime)s] %(filename)s:%(lineno)s - %(message)s', datefmt='%m-%d-%Y %H:%M:%S.%f', filename=self.LOG_FILENAME, level=logging.INFO)
 		self.log = logging
 
+		self.elector_addr = None
+		self.config_addr = None
+		self.elector_code_hash = None
+		self.config_code_hash = None
+		self.restricted_addr = None
+		self.restricted_code_hash = None
+		self.prev_total_stake = None
+		self.prev_num_stakers = None
+
 		self.log.info(f'validator reporter init started at {datetime.utcnow()}')
 		self.ton = mytonctrl.MyTonCore()
 		self.elector_addr = self.ton.GetFullElectorAddr()
@@ -81,8 +90,23 @@ class Reporter(object):
 	def validator_index(self):
 		return self.ton.GetValidatorIndex()
 
-	def validator_name_ok(self, validator_index):
-		return int(socket.gethostname() == f'orbs-{validator_index}')
+	def validator_name_ok(self, wallet_id):
+		return int(socket.gethostname() == f'validator-{wallet_id}')
+
+	def get_sub_wallet_id(self, wallet):
+		res = self.ton.liteClient.Run(f'runmethod {wallet.addr} wallet_id')
+		self.log.info(res)
+		res = self.ton.GetVarFromWorkerOutput(res, "result")
+
+		if not res:
+			return -1
+
+		try:
+			res = int((res.replace('[', '').replace(']', '').split())[0])
+			return res
+		except Exception as e:
+			self.log.info(f'error: unable to extract wallet_id: {e}')
+			return -1
 
 	def validator_wallet(self):
 		return self.ton.GetValidatorWallet()
@@ -104,12 +128,6 @@ class Reporter(object):
 
 	def get_stats(self):
 		return self.ton.GetValidatorStatus()
-
-	def participates_in(self, validator_pubkey):
-		cmd = f'runmethodfull {self.elector_addr} participates_in {validator_pubkey}'
-		result = self.ton.liteClient.Run(cmd)
-
-	# return self.ton.
 
 	def past_election_ids(self):
 		cmd = f'runmethodfull {self.elector_addr} past_election_ids'
@@ -196,6 +214,126 @@ class Reporter(object):
 
 		return net_load_avg, disk_load_pct_avg, mem_load_avg
 
+	def elector_addr_changed(self):
+
+		elector_addr = self.ton.GetFullElectorAddr()
+
+		elector_addr_changed = 0
+		if self.elector_addr is not None and elector_addr != self.elector_addr:
+			elector_addr_changed = 1
+
+		self.elector_addr = elector_addr
+
+		return elector_addr_changed
+
+	def config_addr_changed(self):
+
+		config_addr = self.ton.GetFullConfigAddr()
+
+		config_addr_changed = 0
+		if self.config_addr and config_addr != self.config_addr:
+			config_addr_changed = 1
+
+		self.config_addr = config_addr
+
+		return config_addr_changed
+
+	def elector_code_changed(self):
+
+		if not self.elector_addr:
+			return 0
+
+		elector_account = self.ton.GetAccount(self.elector_addr)
+		assert elector_account, 'failed to get elector account'
+
+		if not self.elector_code_hash:
+			self.elector_code_hash = elector_account.codeHash
+			return 0
+
+		if elector_account.codeHash != self.elector_code_hash:
+			return 1
+
+		return 0
+
+	def config_code_changed(self):
+
+		if not self.config_addr:
+			return 0
+
+		config_account = self.ton.GetAccount(self.config_addr)
+		assert config_account, 'failed to get config account'
+
+		if not self.config_code_hash:
+			self.config_code_hash = config_account.codeHash
+			return 0
+
+		if config_account.codeHash != self.config_code_hash:
+			return 1
+
+		return 0
+
+	def restricted_addr_changed(self, validator_wallet):
+
+		restricted_addr_changed = 0
+		if self.restricted_addr is not None and validator_wallet.addr != self.restricted_addr:
+			restricted_addr_changed = 1
+
+		self.restricted_addr = validator_wallet.addr
+
+		return restricted_addr_changed
+
+	def restricted_code_changed(self, validator_account):
+
+		if not self.restricted_addr:
+			return 0
+
+		assert validator_account, 'failed to get validator account'
+
+		if not self.restricted_code_hash:
+			self.restricted_code_hash = validator_account.codeHash
+			return 0
+
+		if validator_account.codeHash != self.restricted_code_hash:
+			return 1
+
+		return 0
+
+	def get_total_stake(self, mytoncore_db):
+
+		prev_election_id = sorted(mytoncore_db['saveElections'].keys(), reverse=True)[1]
+		total_stake = 0
+		for values in mytoncore_db['saveElections'][prev_election_id].values():
+			total_stake += values['stake']
+
+		return total_stake
+
+	def total_stake_reduce(self, total_stake):
+
+		if not self.prev_total_stake:
+			self.prev_total_stake = total_stake
+			return 0
+
+		prev_total_stake = self.prev_total_stake
+		self.prev_total_stake = total_stake
+
+		return int(total_stake / prev_total_stake < 0.8)
+
+	def get_num_stakers(self, mytoncore_db):
+
+		prev_election_id = sorted(mytoncore_db['saveElections'].keys(), reverse=True)[1]
+		return len(mytoncore_db['saveElections'][prev_election_id].keys())
+
+	def num_stakers_reduce(self, num_stakers):
+
+		if not self.prev_num_stakers:
+			self.prev_num_stakers = num_stakers
+			return 0
+
+		prev_num_stakers = self.prev_num_stakers
+		self.prev_num_stakers = prev_num_stakers
+
+		return int(num_stakers / prev_num_stakers < 0.8)
+
 	def recovery_and_alert(self, res):
 
 		res['exit'] = 0
@@ -214,6 +352,42 @@ class Reporter(object):
 			res['recovery'] = 1
 			res['exit_message'] += f'fine_changed = {res["fine_changed"]}; '
 			res['recovery_message'] += f'fine_changed = {res["fine_changed"]}; '
+
+		if res['elector_addr_changed'] != 0:
+			res['exit'] = 1
+			res['exit_message'] += f'elector_addr_changed = {res["elector_addr_changed"]}; '
+
+		if res['config_addr_changed'] != 0:
+			res['exit'] = 1
+			res['exit_message'] += f'config_addr_changed = {res["config_addr_changed"]}; '
+
+		if res['elector_code_changed'] != 0:
+			res['exit'] = 1
+			res['exit_message'] += f'elector_code_changed = {res["elector_code_changed"]}; '
+
+		if res['config_code_changed'] != 0:
+			res['exit'] = 1
+			res['exit_message'] += f'config_code_changed = {res["config_code_changed"]}; '
+
+		if res['restricted_addr_changed'] != 0:
+			res['exit'] = 1
+			res['exit_message'] += f'restricted_addr_changed = {res["restricted_addr_changed"]}; '
+
+		if res['restricted_code_changed'] != 0:
+			res['exit'] = 1
+			res['exit_message'] += f'restricted_code_changed = {res["restricted_code_changed"]}; '
+
+		if res['total_staked_reduce'] != 0:
+			res['exit'] = 1
+			res['exit_message'] += f'total_staked_reduce = {res["total_staked_reduce"]}; '
+
+		if res['num_stakers_reduce'] != 0:
+			res['exit'] = 1
+			res['exit_message'] += f'num_stakers_reduce = {res["num_stakers_reduce"]}; '
+
+		if res['validator_name_ok'] != 0:
+			res['exit'] = 1
+			res['exit_message'] += f'validator_name_ok = {res["validator_name_ok"]}; '
 
 		if res['systemctl_status_validator_ok'] != 1:
 			res['recovery'] = 1
@@ -260,7 +434,6 @@ class Reporter(object):
 				res['restricted_wallet_exists'] = self.restricted_wallet_exists()
 				validator_index = self.validator_index()
 				res['validator_index'] = validator_index
-				res['validator_name_ok'] = self.validator_name_ok(validator_index)
 
 				validator_wallet = self.validator_wallet()
 				validator_account = self.validator_account(validator_wallet)
@@ -291,12 +464,44 @@ class Reporter(object):
 				res['fine_changed'] = self.check_fine_changes(mytoncore_db)
 				res['net_load_avg'], res['disk_load_pct_avg'], res['mem_load_avg'] = self.get_load_stats(mytoncore_db)
 
+				res['elector_addr_changed'] = self.elector_addr_changed()
+				res['config_addr_changed'] = self.config_addr_changed()
+
+				res['elector_code_changed'] = self.elector_code_changed()
+				res['config_code_changed'] = self.config_code_changed()
+
+				res['restricted_addr_changed'] = self.restricted_addr_changed(validator_wallet)
+				res['restricted_code_changed'] = self.restricted_code_changed(validator_account)
+
+				total_stake = self.get_total_stake(mytoncore_db)
+
+				res['total_stake'] = total_stake
+
+				res['total_staked_reduce'] = self.total_stake_reduce(total_stake)
+
+				num_stakers = self.get_num_stakers(mytoncore_db)
+				res['num_stakers'] = num_stakers
+				res['num_stakers_reduce'] = self.num_stakers_reduce(num_stakers)
+
+				wallet_id = self.get_sub_wallet_id(validator_wallet)
+				res['validator_name_ok'] = self.validator_name_ok(wallet_id)
+
 				self.recovery_and_alert(res)
 
-				# TODO: add hash on contracts, check that contracts address wasn't changed
-				# TODO: any change on network - set stake to 0
+				# TODO: add hash on contracts --> exit
+				# TODO: check that contracts address wasn't changed --> exit
+
+				# TODO: Verify wallet addr, verify wallet hash, owner getter check
 				# TODO: exit if total stake reduce - number of stakers (<80%) or total stake (<80%)
-				# TODO: how to check if network was upgraded
+				# TODO: get wallet_id == get_id_from_hostname()
+
+
+				# TODO: reporter restart (lifetime decreased)
+				# TODO: validator restart (lifetime decreased)
+				# TODO: check log max size, rotation?
+				# TODO: how to check if network was upgraded (exit on any change)
+				
+				# TODO: Restricted wallet - separate rewards from funds (legal) -> shlomi
 
 				res['update_time'] = time.time()
 				self.report(res)
