@@ -397,15 +397,23 @@ class Reporter(object):
 			res['exit'] = 1
 			res['exit_message'] += f'restricted_code_changed = {res["restricted_code_changed"]}; '
 
-		if res['total_staked_reduce'] != 0:
+		if res['total_stake_reduce'] != 0:
 			res['exit'] = 1
-			res['exit_message'] += f'total_staked_reduce = {res["total_staked_reduce"]}; '
+			res['exit_message'] += f'total_stake_reduce = {res["total_stake_reduce"]}; '
 
 		if res['num_stakers_reduce'] != 0:
 			res['exit'] = 1
 			res['exit_message'] += f'num_stakers_reduce = {res["num_stakers_reduce"]}; '
 
 		if res['validator_name_ok'] != 0:
+			res['exit'] = 1
+			res['exit_message'] += f'validator_name_ok = {res["validator_name_ok"]}; '
+
+		if res['new_offer'] != 0:
+			res['exit'] = 1
+			res['exit_message'] += f'validator_name_ok = {res["validator_name_ok"]}; '
+
+		if res['sub_wallet_id'] != 0:
 			res['exit'] = 1
 			res['exit_message'] += f'validator_name_ok = {res["validator_name_ok"]}; '
 
@@ -499,14 +507,15 @@ class Reporter(object):
 
 				res['new_offer'] = self.new_offers()
 
-				res['total_staked_reduce'] = self.total_stake_reduce(total_stake)
+				res['total_stake_reduce'] = self.total_stake_reduce(total_stake)
 
 				num_stakers = self.get_num_stakers(mytoncore_db)
 				res['num_stakers'] = num_stakers
 				res['num_stakers_reduce'] = self.num_stakers_reduce(num_stakers)
 
-				wallet_id = self.get_sub_wallet_id(validator_wallet)
-				res['validator_name_ok'] = self.validator_name_ok(wallet_id)
+				# wallet_id = self.get_sub_wallet_id(validator_wallet)
+				# res['validator_name_ok'] = self.validator_name_ok(wallet_id)
+				res['sub_wallet_id'] = self.get_sub_wallet_id(validator_wallet)
 
 				self.recovery_and_alert(res)
 
