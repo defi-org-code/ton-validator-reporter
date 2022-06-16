@@ -3,7 +3,7 @@ Description=Ton Validator Version Controller by ORBS
 After=validator.service
 
 [Service]
-User=orbs
+User=ubuntu
 WorkingDirectory=/usr/src/reporter/
 ExecStart=python3 version_controller.py
 Restart=always

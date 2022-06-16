@@ -49,6 +49,7 @@ class Reporter(object):
 		self.restricted_code_hash = None
 		self.prev_total_stake = None
 		self.prev_num_stakers = None
+		self.offers = []
 
 		self.log.info(f'validator reporter init started at {datetime.utcnow()}')
 		self.ton = mytonctrl.MyTonCore()
@@ -66,6 +67,7 @@ class Reporter(object):
 
 		if 'wallet_init_balance' not in orbs_validator_params.keys():
 			validator_wallet = self.validator_wallet()
+			print(f'validator_wallet.addr={validator_wallet.addr}')
 			validator_account = self.validator_account(validator_wallet)
 			available_validator_balance = self.available_validator_balance(validator_account)
 			validator_balance_at_elector = self.balance_at_elector(validator_wallet)
@@ -153,7 +155,7 @@ class Reporter(object):
 
 	def aggregated_apr(self, total_balance, stake_amount, min_stake_amount=315000):
 
-		if total_balance < stake_amount or stake_amount < min_stake_amount:
+		if stake_amount and total_balance and (total_balance < stake_amount or stake_amount < min_stake_amount):
 			return 0
 
 		return 100 * (total_balance / self.orbs_validator_params['wallet_init_balance'] - 1)
@@ -163,7 +165,7 @@ class Reporter(object):
 		# and everything is returned to the local wallet
 		# we do not use the rewards generated in this process (stake is not increased every validation cycle) but they are taken in account for the apr calc
 		# we should optimize by increase the stake_amount to move from apr to apy
-		if stake_amount > local_wallet_balance or stake_amount < min_stake_amount:
+		if stake_amount and local_wallet_balance and (stake_amount > local_wallet_balance or stake_amount < min_stake_amount):
 			return 0
 
 		return 100 * (local_wallet_balance / stake_amount - 1) * self.SECONDS_IN_YEAR / self.validation_cycle_in_seconds
@@ -334,6 +336,18 @@ class Reporter(object):
 
 		return int(num_stakers / prev_num_stakers < 0.8)
 
+	def new_offers(self):
+
+		offers = self.ton.GetOffers()
+
+		if not self.offers:
+			self.offers = offers
+			return 0
+
+		if offers != self.offers:
+			self.log.info(f'new offers: {offers}, old offers: {self.offers} (diff: {list(set(offers)- set(self.offers))})')
+			return 1
+
 	def recovery_and_alert(self, res):
 
 		res['exit'] = 0
@@ -426,90 +440,95 @@ class Reporter(object):
 
 			start_time = time.time()
 
-			try:
-				self.log.info(f'validator reporter started at {datetime.utcnow()}')
-				systemctl_status_validator = self.systemctl_status_validator()
-				res['systemctl_status_validator'] = systemctl_status_validator
-				res['systemctl_status_validator_ok'] = self.systemctl_status_validator_ok(systemctl_status_validator)
-				res['restricted_wallet_exists'] = self.restricted_wallet_exists()
-				validator_index = self.validator_index()
-				res['validator_index'] = validator_index
+			# try:
+			self.log.info(f'validator reporter started at {datetime.utcnow()}')
+			systemctl_status_validator = self.systemctl_status_validator()
+			res['systemctl_status_validator'] = systemctl_status_validator
+			res['systemctl_status_validator_ok'] = self.systemctl_status_validator_ok(systemctl_status_validator)
+			res['restricted_wallet_exists'] = self.restricted_wallet_exists()
+			validator_index = self.validator_index()
+			res['validator_index'] = validator_index
 
-				validator_wallet = self.validator_wallet()
-				validator_account = self.validator_account(validator_wallet)
-				# res['validator_wallet_addr_ok'] = self.validator_wallet_addr_ok(validator_wallet)
-				available_validator_balance = self.available_validator_balance(validator_account)
-				validator_balance_at_elector = self.balance_at_elector(validator_wallet)
-				res['available_validator_balance'] = available_validator_balance
-				res['validator_balance_at_elector'] = validator_balance_at_elector
-				res['total_validator_balance'] = available_validator_balance + validator_balance_at_elector
-				res['local_stake'] = self.get_local_stake()
+			print('1')
+			validator_wallet = self.validator_wallet()
+			validator_account = self.validator_account(validator_wallet)
+			# res['validator_wallet_addr_ok'] = self.validator_wallet_addr_ok(validator_wallet)
+			available_validator_balance = self.available_validator_balance(validator_account)
+			validator_balance_at_elector = self.balance_at_elector(validator_wallet)
+			res['available_validator_balance'] = available_validator_balance
+			res['validator_balance_at_elector'] = validator_balance_at_elector
+			res['total_validator_balance'] = available_validator_balance + validator_balance_at_elector
+			res['local_stake'] = self.get_local_stake()
+			print('2')
 
-				stats = self.get_stats()
-				res['out_of_sync'] = stats['outOfSync']
-				res['is_working'] = int(stats['isWorking'])
+			stats = self.get_stats()
+			res['out_of_sync'] = stats['outOfSync']
+			res['is_working'] = int(stats['isWorking'])
+			print('3')
 
-				active_election_id = self.active_election_id()
-				past_election_ids = self.past_election_ids()
-				mytoncore_db = self.get_mytoncore_db()
-				res['participate_in_active_election'] = self.participates_in_election_id(mytoncore_db, str(active_election_id), validator_wallet.addr)
-				res['participate_in_prev_election'] = self.participates_in_election_id(mytoncore_db, str(max(past_election_ids)), validator_wallet.addr)
+			active_election_id = self.active_election_id()
+			past_election_ids = self.past_election_ids()
+			mytoncore_db = self.get_mytoncore_db()
+			res['participate_in_active_election'] = self.participates_in_election_id(mytoncore_db, str(active_election_id), validator_wallet.addr)
+			res['participate_in_prev_election'] = self.participates_in_election_id(mytoncore_db, str(max(past_election_ids)), validator_wallet.addr)
+			print('4')
 
-				config15 = self.ton.GetConfig15()
-				self.validation_cycle_in_seconds = config15['validatorsElectedFor']
-				res['last_cycle_apr'] = self.last_cycle_apr(available_validator_balance, res['local_stake'])
-				res['aggregated_apr'] = self.aggregated_apr(res['total_validator_balance'], res['local_stake'])
-				res['validator_load'] = self.get_validator_load(validator_index)
-				res['min_efficiency'] = self.calc_min_efficiency(res['validator_load'])
-				res['fine_changed'] = self.check_fine_changes(mytoncore_db)
-				res['net_load_avg'], res['disk_load_pct_avg'], res['mem_load_avg'] = self.get_load_stats(mytoncore_db)
+			config15 = self.ton.GetConfig15()
+			self.validation_cycle_in_seconds = config15['validatorsElectedFor']
+			res['last_cycle_apr'] = self.last_cycle_apr(available_validator_balance, res['local_stake'])
+			res['aggregated_apr'] = self.aggregated_apr(res['total_validator_balance'], res['local_stake'])
+			res['validator_load'] = self.get_validator_load(validator_index)
+			res['min_efficiency'] = self.calc_min_efficiency(res['validator_load'])
+			res['fine_changed'] = self.check_fine_changes(mytoncore_db)
+			res['net_load_avg'], res['disk_load_pct_avg'], res['mem_load_avg'] = self.get_load_stats(mytoncore_db)
+			print('5')
 
-				res['elector_addr_changed'] = self.elector_addr_changed()
-				res['config_addr_changed'] = self.config_addr_changed()
+			res['elector_addr_changed'] = self.elector_addr_changed()
+			res['config_addr_changed'] = self.config_addr_changed()
+			print('6')
 
-				res['elector_code_changed'] = self.elector_code_changed()
-				res['config_code_changed'] = self.config_code_changed()
+			res['elector_code_changed'] = self.elector_code_changed()
+			res['config_code_changed'] = self.config_code_changed()
+			print('7')
 
-				res['restricted_addr_changed'] = self.restricted_addr_changed(validator_wallet)
-				res['restricted_code_changed'] = self.restricted_code_changed(validator_account)
+			res['restricted_addr_changed'] = self.restricted_addr_changed(validator_wallet)
+			res['restricted_code_changed'] = self.restricted_code_changed(validator_account)
+			print('8')
 
-				total_stake = self.get_total_stake(mytoncore_db)
+			total_stake = self.get_total_stake(mytoncore_db)
+			print('9')
 
-				res['total_stake'] = total_stake
+			res['total_stake'] = total_stake
 
-				res['total_staked_reduce'] = self.total_stake_reduce(total_stake)
+			res['new_offer'] = self.new_offers()
 
-				num_stakers = self.get_num_stakers(mytoncore_db)
-				res['num_stakers'] = num_stakers
-				res['num_stakers_reduce'] = self.num_stakers_reduce(num_stakers)
+			res['total_staked_reduce'] = self.total_stake_reduce(total_stake)
 
-				wallet_id = self.get_sub_wallet_id(validator_wallet)
-				res['validator_name_ok'] = self.validator_name_ok(wallet_id)
+			num_stakers = self.get_num_stakers(mytoncore_db)
+			res['num_stakers'] = num_stakers
+			res['num_stakers_reduce'] = self.num_stakers_reduce(num_stakers)
 
-				self.recovery_and_alert(res)
+			wallet_id = self.get_sub_wallet_id(validator_wallet)
+			res['validator_name_ok'] = self.validator_name_ok(wallet_id)
 
-				# TODO: add hash on contracts --> exit
-				# TODO: check that contracts address wasn't changed --> exit
+			self.recovery_and_alert(res)
 
-				# TODO: Verify wallet addr, verify wallet hash, owner getter check
-				# TODO: exit if total stake reduce - number of stakers (<80%) or total stake (<80%)
-				# TODO: get wallet_id == get_id_from_hostname()
+			# TODO: owner getter check
 
+			# TODO: reporter restart (lifetime decreased)
+			# TODO: validator restart (lifetime decreased)
+			# TODO: check log max size, rotation?
+			# TODO: how to check if network was upgraded (exit on any change)
 
-				# TODO: reporter restart (lifetime decreased)
-				# TODO: validator restart (lifetime decreased)
-				# TODO: check log max size, rotation?
-				# TODO: how to check if network was upgraded (exit on any change)
-				
-				# TODO: Restricted wallet - separate rewards from funds (legal) -> shlomi
+			# TODO: Restricted wallet - separate rewards from funds (legal) -> shlomi
 
-				res['update_time'] = time.time()
-				self.report(res)
-				self.log.info(res)
+			res['update_time'] = time.time()
+			self.report(res)
+			self.log.info(res)
 
-			except Exception as e:
-				self.log.info(f'unexpected error: {e}')
-				self.log.info(res)
+			# except Exception as e:
+			# 	self.log.info(f'unexpected error: {e}')
+			# 	self.log.info(res)
 
 			sleep_sec = self.SLEEP_INTERVAL - time.time() % self.SLEEP_INTERVAL
 			self.log.info(f'executed in {round(time.time()-start_time, 2)} seconds')
