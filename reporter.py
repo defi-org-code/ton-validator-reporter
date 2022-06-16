@@ -7,6 +7,7 @@ import json
 import time
 from datetime import datetime
 import logging
+from logging.handlers import RotatingFileHandler
 
 sys.path.append('/usr/src/mytonctrl')
 
@@ -43,6 +44,10 @@ class Reporter(object):
 			fmt='%(asctime)s.%(msecs)03d',
 			datefmt='%Y-%m-%d,%H:%M:%S'
 		)
+		log = logging.getLogger()
+		handler = RotatingFileHandler(self.LOG_FILENAME, maxBytes=10*1024, backupCount=1)
+		log.addHandler(handler)
+
 		self.log = logging
 
 		self.elector_addr = None
