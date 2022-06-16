@@ -155,7 +155,7 @@ class Reporter(object):
 
 	def aggregated_apr(self, total_balance, stake_amount, min_stake_amount=315000):
 
-		if stake_amount and total_balance and (total_balance < stake_amount or stake_amount < min_stake_amount):
+		if stake_amount or total_balance or total_balance < stake_amount or stake_amount < min_stake_amount:
 			return 0
 
 		return 100 * (total_balance / self.orbs_validator_params['wallet_init_balance'] - 1)
@@ -165,7 +165,7 @@ class Reporter(object):
 		# and everything is returned to the local wallet
 		# we do not use the rewards generated in this process (stake is not increased every validation cycle) but they are taken in account for the apr calc
 		# we should optimize by increase the stake_amount to move from apr to apy
-		if stake_amount and local_wallet_balance and (stake_amount > local_wallet_balance or stake_amount < min_stake_amount):
+		if stake_amount or local_wallet_balance or stake_amount > local_wallet_balance or stake_amount < min_stake_amount:
 			return 0
 
 		return 100 * (local_wallet_balance / stake_amount - 1) * self.SECONDS_IN_YEAR / self.validation_cycle_in_seconds
