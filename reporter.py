@@ -38,7 +38,11 @@ class Reporter(object):
 	def __init__(self):
 		super(Reporter, self).__init__()
 
-		logging.basicConfig(format='[%(asctime)s] %(filename)s:%(lineno)s - %(message)s', datefmt='%m-%d-%Y %H:%M:%S.%f', filename=self.LOG_FILENAME, level=logging.INFO)
+		logging.basicConfig(format='[%(asctime)s] %(filename)s:%(lineno)s - %(message)s', filename=self.LOG_FILENAME, level=logging.INFO)
+		logging.Formatter(
+			fmt='%(asctime)s.%(msecs)03d',
+			datefmt='%Y-%m-%d,%H:%M:%S'
+		)
 		self.log = logging
 
 		self.elector_addr = None
@@ -97,7 +101,6 @@ class Reporter(object):
 
 	def get_sub_wallet_id(self, wallet):
 		res = self.ton.liteClient.Run(f'runmethod {wallet.addr} wallet_id')
-		self.log.info(res)
 		res = self.ton.GetVarFromWorkerOutput(res, "result")
 
 		if not res:
