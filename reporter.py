@@ -8,6 +8,8 @@ import time
 from datetime import datetime
 import logging
 from logging.handlers import RotatingFileHandler
+from subprocess import check_output
+import psutil
 
 sys.path.append('/usr/src/mytonctrl')
 
@@ -27,7 +29,7 @@ class Reporter(object):
 	REPORTER_PARAMS_FILE = f'{REPORTER_DIR}/params.json'
 	MYTONCORE_PATH = '/usr/src'
 	REPORTER_FILE = f'{REPORTER_DIR}/report.json'
-	orbs_validator_params = dict()
+	validator_params = dict()
 	validation_cycle_in_seconds = None
 	LOG_FILENAME = f'/var/log/reporter/reporter.log'
 
@@ -45,49 +47,69 @@ class Reporter(object):
 			datefmt='%Y-%m-%d,%H:%M:%S'
 		)
 		log = logging.getLogger()
-		handler = RotatingFileHandler(self.LOG_FILENAME, maxBytes=10*1024, backupCount=1)
+		handler = RotatingFileHandler(self.LOG_FILENAME, maxBytes=3 * 1024 * 1024, backupCount=5, mode='a')
 		log.addHandler(handler)
 
 		self.log = logging
-
-		self.elector_addr = None
-		self.config_addr = None
-		self.elector_code_hash = None
-		self.config_code_hash = None
-		self.restricted_addr = None
-		self.restricted_code_hash = None
-		self.prev_total_stake = None
-		self.prev_num_stakers = None
-		self.offers = []
-
 		self.log.info(f'validator reporter init started at {datetime.utcnow()}')
+
+		# self.load_params_obj(['elector_addr', 'config_addr', 'elector_code_hash', 'config_code_hash',
+		# 					  'restricted_addr', 'restricted_code_hash', 'prev_total_stake', 'prev_num_stakers',
+		# 					  'offers', 'capabilities', 'version'])
+
+		self.params = self.load_params_from_file()
+		self.init_params()
+
 		self.ton = mytonctrl.MyTonCore()
-		self.elector_addr = self.ton.GetFullElectorAddr()
 		self.get_set_init_wallet_balance()
+
+	def init_params(self):
+
+		if not self.params.get('elector_addr'):
+			elector_addr = self.ton.GetFullElectorAddr()
+			self.write_params_to_file('elector_addr', elector_addr)
+
+		if not self.params.get('config_addr'):
+			config_addr = self.ton.GetFullConfigAddr()
+			self.write_params_to_file('config_addr', config_addr)
+
+	def load_params_from_file(self):
+
+		if os.path.isfile(self.REPORTER_PARAMS_FILE):
+			with open(self.REPORTER_PARAMS_FILE, 'r') as f:
+				return json.load(f)
 
 	def get_set_init_wallet_balance(self):
 
-		# TODO: create LOG_FILENAME on installer
-
-		orbs_validator_params = {}
+		validator_params = {}
 		if os.path.isfile(self.REPORTER_PARAMS_FILE):
 			with open(self.REPORTER_PARAMS_FILE, 'r') as f:
-				orbs_validator_params = json.load(f)
+				validator_params = json.load(f)
 
-		if 'wallet_init_balance' not in orbs_validator_params.keys():
+		if 'wallet_init_balance' not in validator_params.keys():
 			validator_wallet = self.validator_wallet()
-			print(f'validator_wallet.addr={validator_wallet.addr}')
+			self.log.info(f'validator_wallet.addr={validator_wallet.addr}')
 			validator_account = self.validator_account(validator_wallet)
 			available_validator_balance = self.available_validator_balance(validator_account)
 			validator_balance_at_elector = self.balance_at_elector(validator_wallet)
 
-			orbs_validator_params['wallet_init_balance'] = available_validator_balance + validator_balance_at_elector
-			self.log.info('orbs_validator_params was updated: ', orbs_validator_params)
+			validator_params['wallet_init_balance'] = available_validator_balance + validator_balance_at_elector
+			self.log.info('validator_params was updated: ', validator_params)
 			with open(self.REPORTER_PARAMS_FILE, 'w') as f:
-				json.dump(orbs_validator_params, f)
+				json.dump(validator_params, f)
 				self.log.info(f'{self.REPORTER_PARAMS_FILE} was updated')
 
-		self.orbs_validator_params = orbs_validator_params
+		self.validator_params = validator_params
+
+	def write_params_to_file(self, key, value):
+
+		self.params[key] = value
+
+		self.log.info(f'writing {key} with value {value} to params file at {self.REPORTER_PARAMS_FILE}')
+
+		with open(self.REPORTER_PARAMS_FILE, 'w') as f:
+			json.dump(self.params, f)
+			self.log.info(f'{self.REPORTER_PARAMS_FILE} was updated')
 
 	def systemctl_status_validator(self):
 		return os.system('systemctl status validator')
@@ -131,7 +153,7 @@ class Reporter(object):
 		return validator_account.balance
 
 	def balance_at_elector(self, validator_wallet):
-		return self.ton.GetReturnedStake(self.elector_addr, validator_wallet)
+		return self.ton.GetReturnedStake(self.params.get('elector_addr'), validator_wallet)
 
 	def get_local_stake(self):
 		return self.ton.GetSettings("stake")
@@ -140,14 +162,14 @@ class Reporter(object):
 		return self.ton.GetValidatorStatus()
 
 	def past_election_ids(self):
-		cmd = f'runmethodfull {self.elector_addr} past_election_ids'
+		cmd = f"runmethodfull {self.params.get('elector_addr')} past_election_ids"
 
 		result = self.ton.liteClient.Run(cmd)
 		activeElectionId = self.ton.GetVarFromWorkerOutput(result, "result")
 		return [int(s) for s in activeElectionId.replace('(', '').replace(')', '').split() if s.isdigit()]
 
 	def active_election_id(self):
-		return self.ton.GetActiveElectionId(self.elector_addr)
+		return self.ton.GetActiveElectionId(self.params.get('elector_addr'))
 
 	def get_mytoncore_db(self):
 
@@ -166,7 +188,7 @@ class Reporter(object):
 		if stake_amount or total_balance or total_balance < stake_amount or stake_amount < min_stake_amount:
 			return 0
 
-		return 100 * (total_balance / self.orbs_validator_params['wallet_init_balance'] - 1)
+		return 100 * (total_balance / self.validator_params['wallet_init_balance'] - 1)
 
 	def last_cycle_apr(self, local_wallet_balance, stake_amount, min_stake_amount=315000):
 		# we assume here that every cycle we will stake stake_amount (get stake to read this number)
@@ -231,56 +253,50 @@ class Reporter(object):
 
 		elector_addr = self.ton.GetFullElectorAddr()
 
-		elector_addr_changed = 0
-		if self.elector_addr is not None and elector_addr != self.elector_addr:
-			elector_addr_changed = 1
+		if elector_addr != self.params.get('elector_addr'):
+			return 1
 
-		self.elector_addr = elector_addr
-
-		return elector_addr_changed
+		return 0
 
 	def config_addr_changed(self):
 
 		config_addr = self.ton.GetFullConfigAddr()
 
-		config_addr_changed = 0
-		if self.config_addr and config_addr != self.config_addr:
-			config_addr_changed = 1
+		if config_addr != self.params.get('config_addr'):
+			return 1
 
-		self.config_addr = config_addr
-
-		return config_addr_changed
+		return 0
 
 	def elector_code_changed(self):
 
-		if not self.elector_addr:
+		if not self.params.get('elector_addr'):
 			return 0
 
-		elector_account = self.ton.GetAccount(self.elector_addr)
+		elector_account = self.ton.GetAccount(self.params.get('elector_addr'))
 		assert elector_account, 'failed to get elector account'
 
-		if not self.elector_code_hash:
-			self.elector_code_hash = elector_account.codeHash
+		if not self.params.get('elector_code_hash'):
+			self.write_params_to_file('elector_code_hash', elector_account.codeHash)
 			return 0
 
-		if elector_account.codeHash != self.elector_code_hash:
+		if elector_account.codeHash != self.params.get('elector_code_hash'):
 			return 1
 
 		return 0
 
 	def config_code_changed(self):
 
-		if not self.config_addr:
+		if not self.params.get('config_addr'):
 			return 0
 
-		config_account = self.ton.GetAccount(self.config_addr)
+		config_account = self.ton.GetAccount(self.params.get('config_addr'))
 		assert config_account, 'failed to get config account'
 
-		if not self.config_code_hash:
-			self.config_code_hash = config_account.codeHash
+		if not self.params.get('config_code_hash'):
+			self.write_params_to_file('config_code_hash', config_account.codeHash)
 			return 0
 
-		if config_account.codeHash != self.config_code_hash:
+		if config_account.codeHash != self.params.get('config_code_hash'):
 			return 1
 
 		return 0
@@ -288,6 +304,11 @@ class Reporter(object):
 	def restricted_addr_changed(self, validator_wallet):
 
 		restricted_addr_changed = 0
+		if not self.params.get('config_code_hash'):
+			self.write_params_to_file('config_code_hash', config_account.codeHash)
+			return 0
+
+
 		if self.restricted_addr is not None and validator_wallet.addr != self.restricted_addr:
 			restricted_addr_changed = 1
 
@@ -320,7 +341,7 @@ class Reporter(object):
 
 		return total_stake
 
-	def total_stake_reduce(self, total_stake):
+	def total_stake_reduced(self, total_stake):
 
 		if not self.prev_total_stake:
 			self.prev_total_stake = total_stake
@@ -336,7 +357,7 @@ class Reporter(object):
 		prev_election_id = sorted(mytoncore_db['saveElections'].keys(), reverse=True)[1]
 		return len(mytoncore_db['saveElections'][prev_election_id].keys())
 
-	def num_stakers_reduce(self, num_stakers):
+	def num_stakers_reduced(self, num_stakers):
 
 		if not self.prev_num_stakers:
 			self.prev_num_stakers = num_stakers
@@ -356,8 +377,35 @@ class Reporter(object):
 			return 0
 
 		if offers != self.offers:
-			self.log.info(f'new offers: {offers}, old offers: {self.offers} (diff: {list(set(offers)- set(self.offers))})')
+			self.log.info(f'new offers: {offers}, old offers: {self.offers} (diff: {list(set(offers) - set(self.offers))})')
 			return 1
+
+	def get_global_version(self):
+
+		config8 = self.ton.GetConfig(8)
+		try:
+			version = config8['_']['version']
+			capabilities = config8['_']['capabilities']
+			return version, capabilities
+
+		except Exception as e:
+			self.log.error('could not extract version and capabilities from config8={}, e={}'.format(config8, e))
+			return -1, -1
+
+	def global_version_changed(self, version, capabilities):
+
+		if not self.version and not self.capabilities:
+			self.version = version
+			self.capabilities = capabilities
+			return 0
+
+		if version != self.version or capabilities != self.capabilities:
+			return 1
+
+		return 0
+
+	def get_pid(self):
+		return os.getpid()
 
 	def recovery_and_alert(self, res):
 
@@ -402,25 +450,25 @@ class Reporter(object):
 			res['exit'] = 1
 			res['exit_message'] += f'restricted_code_changed = {res["restricted_code_changed"]}; '
 
-		if res['total_stake_reduce'] != 0:
+		if res['total_stake_reduced'] != 0:
 			res['exit'] = 1
-			res['exit_message'] += f'total_stake_reduce = {res["total_stake_reduce"]}; '
+			res['exit_message'] += f'total_stake_reduced = {res["total_stake_reduced"]}; '
 
-		if res['num_stakers_reduce'] != 0:
+		if res['num_stakers_reduced'] != 0:
 			res['exit'] = 1
-			res['exit_message'] += f'num_stakers_reduce = {res["num_stakers_reduce"]}; '
-
-		if res['validator_name_ok'] != 0:
-			res['exit'] = 1
-			res['exit_message'] += f'validator_name_ok = {res["validator_name_ok"]}; '
+			res['exit_message'] += f'num_stakers_reduced = {res["num_stakers_reduced"]}; '
 
 		if res['new_offer'] != 0:
 			res['exit'] = 1
-			res['exit_message'] += f'validator_name_ok = {res["validator_name_ok"]}; '
+			res['exit_message'] += f'new_offer = {res["new_offer"]}; '
 
 		if res['sub_wallet_id'] != 0:
 			res['exit'] = 1
-			res['exit_message'] += f'validator_name_ok = {res["validator_name_ok"]}; '
+			res['exit_message'] += f'sub_wallet_id = {res["sub_wallet_id"]}; '
+
+		if res['global_version_changed'] != 0:
+			res['exit'] = 1
+			res['exit_message'] += f'global_version_changed = {res["global_version_changed"]}; '
 
 		if res['systemctl_status_validator_ok'] != 1:
 			res['recovery'] = 1
@@ -512,26 +560,28 @@ class Reporter(object):
 
 				res['new_offer'] = self.new_offers()
 
-				res['total_stake_reduce'] = self.total_stake_reduce(total_stake)
+				res['total_stake_reduced'] = self.total_stake_reduced(total_stake)
 
 				num_stakers = self.get_num_stakers(mytoncore_db)
 				res['num_stakers'] = num_stakers
-				res['num_stakers_reduce'] = self.num_stakers_reduce(num_stakers)
+				res['num_stakers_reduced'] = self.num_stakers_reduced(num_stakers)
 
-				# wallet_id = self.get_sub_wallet_id(validator_wallet)
-				# res['validator_name_ok'] = self.validator_name_ok(wallet_id)
 				res['sub_wallet_id'] = self.get_sub_wallet_id(validator_wallet)
 
+				res['version'], res['capabilities'] = self.get_global_version()
+				res['global_version_changed'] = self.global_version_changed(res['version'], res['capabilities'])
+
+				pid = self.get_pid()
+				res['pid'] = pid
 				self.recovery_and_alert(res)
 
 				# TODO: owner getter check
 
 				# TODO: reporter restart (lifetime decreased)
 				# TODO: validator restart (lifetime decreased)
-				# TODO: check log max size, rotation?
-				# TODO: how to check if network was upgraded (exit on any change)
+				# TODO: load init values from param json
 
-				# TODO: Restricted wallet - separate rewards from funds (legal) -> shlomi
+				# TODO: Restricted wallet - separate rewards from funds --> shlomi
 
 				res['update_time'] = time.time()
 				self.report(res)
@@ -542,7 +592,7 @@ class Reporter(object):
 				self.log.info(res)
 
 			sleep_sec = self.SLEEP_INTERVAL - time.time() % self.SLEEP_INTERVAL
-			self.log.info(f'executed in {round(time.time()-start_time, 2)} seconds')
+			self.log.info(f'executed in {round(time.time() - start_time, 2)} seconds')
 			self.log.info(f'sleep for {round(sleep_sec)} seconds')
 			time.sleep(sleep_sec)
 
