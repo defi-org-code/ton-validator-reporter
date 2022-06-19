@@ -53,10 +53,11 @@ class Reporter(object):
 		self.log = logging
 		self.log.info(f'validator reporter init started at {datetime.utcnow()}')
 
+		self.ton = mytonctrl.MyTonCore()
+
 		self.params = self.load_params_from_file()
 		self.init_params()
 
-		self.ton = mytonctrl.MyTonCore()
 		self.init_wallet_balance()
 
 	def load_params_from_file(self):
@@ -341,7 +342,7 @@ class Reporter(object):
 
 		offers = self.ton.GetOffers()
 
-		if not self.params.get('offers'):
+		if self.params.get('offers') is None:
 			self.write_params_to_file('offers', offers)
 			return 0
 
@@ -371,6 +372,17 @@ class Reporter(object):
 			return 0
 
 		if version != self.params.get('version') or capabilities != self.params.get('capabilities'):
+			return 1
+
+		return 0
+
+	def reporter_pid_changed(self, pid):
+
+		if not self.params.get('reporter_pid'):
+			self.write_params_to_file('reporter_pid', pid)
+			return 0
+
+		if pid != self.params.get('reporter_pid'):
 			return 1
 
 		return 0
@@ -444,6 +456,10 @@ class Reporter(object):
 		if res['global_version_changed'] != 0:
 			res['exit'] = 1
 			res['exit_message'] += f'global_version_changed = {res["global_version_changed"]}; '
+
+		if res['reporter_pid_changed'] != 0:
+			res['exit'] = 1
+			res['exit_message'] += f'reporter_pid_changed = {res["reporter_pid_changed"]}; '
 
 		#################################
 		# Recovery Only
@@ -553,7 +569,10 @@ class Reporter(object):
 				res['global_version_changed'] = self.global_version_changed(res['version'], res['capabilities'])
 
 				pid = self.get_pid()
-				res['pid'] = pid
+				res['reporter_pid'] = pid
+
+				res['reporter_pid_changed'] = self.reporter_pid_changed(res['reporter_pid'])
+
 				self.recovery_and_alert(res)
 
 				# TODO: owner getter check
