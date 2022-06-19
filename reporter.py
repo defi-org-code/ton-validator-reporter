@@ -8,8 +8,6 @@ import time
 from datetime import datetime
 import logging
 from logging.handlers import RotatingFileHandler
-from subprocess import check_output
-import psutil
 
 sys.path.append('/usr/src/mytonctrl')
 
@@ -574,14 +572,6 @@ class Reporter(object):
 				res['reporter_pid_changed'] = self.reporter_pid_changed(res['reporter_pid'])
 
 				self.recovery_and_alert(res)
-
-				# TODO: owner getter check
-
-				# TODO: reporter restart (lifetime decreased)
-				# TODO: validator restart (lifetime decreased)
-				# TODO: load init values from param json
-
-				# TODO: Restricted wallet - separate rewards from funds --> shlomi
 
 				res['update_time'] = time.time()
 				self.report(res)
