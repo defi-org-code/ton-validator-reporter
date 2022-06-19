@@ -53,15 +53,27 @@ class Reporter(object):
 		self.log = logging
 		self.log.info(f'validator reporter init started at {datetime.utcnow()}')
 
-		# self.load_params_obj(['elector_addr', 'config_addr', 'elector_code_hash', 'config_code_hash',
-		# 					  'restricted_addr', 'restricted_code_hash', 'prev_total_stake', 'prev_num_stakers',
-		# 					  'offers', 'capabilities', 'version'])
-
 		self.params = self.load_params_from_file()
 		self.init_params()
 
 		self.ton = mytonctrl.MyTonCore()
-		self.get_set_init_wallet_balance()
+		self.init_wallet_balance()
+
+	def load_params_from_file(self):
+
+		if os.path.isfile(self.REPORTER_PARAMS_FILE):
+			with open(self.REPORTER_PARAMS_FILE, 'r') as f:
+				return json.load(f)
+
+	def write_params_to_file(self, key, value):
+
+		self.params[key] = value
+
+		self.log.info(f'writing {key} with value {value} to params file at {self.REPORTER_PARAMS_FILE}')
+
+		with open(self.REPORTER_PARAMS_FILE, 'w') as f:
+			json.dump(self.params, f)
+			self.log.info(f'{self.REPORTER_PARAMS_FILE} was updated')
 
 	def init_params(self):
 
@@ -73,43 +85,16 @@ class Reporter(object):
 			config_addr = self.ton.GetFullConfigAddr()
 			self.write_params_to_file('config_addr', config_addr)
 
-	def load_params_from_file(self):
+	def init_wallet_balance(self):
 
-		if os.path.isfile(self.REPORTER_PARAMS_FILE):
-			with open(self.REPORTER_PARAMS_FILE, 'r') as f:
-				return json.load(f)
-
-	def get_set_init_wallet_balance(self):
-
-		validator_params = {}
-		if os.path.isfile(self.REPORTER_PARAMS_FILE):
-			with open(self.REPORTER_PARAMS_FILE, 'r') as f:
-				validator_params = json.load(f)
-
-		if 'wallet_init_balance' not in validator_params.keys():
+		if 'wallet_init_balance' not in self.params.keys():
 			validator_wallet = self.validator_wallet()
 			self.log.info(f'validator_wallet.addr={validator_wallet.addr}')
 			validator_account = self.validator_account(validator_wallet)
 			available_validator_balance = self.available_validator_balance(validator_account)
 			validator_balance_at_elector = self.balance_at_elector(validator_wallet)
 
-			validator_params['wallet_init_balance'] = available_validator_balance + validator_balance_at_elector
-			self.log.info('validator_params was updated: ', validator_params)
-			with open(self.REPORTER_PARAMS_FILE, 'w') as f:
-				json.dump(validator_params, f)
-				self.log.info(f'{self.REPORTER_PARAMS_FILE} was updated')
-
-		self.validator_params = validator_params
-
-	def write_params_to_file(self, key, value):
-
-		self.params[key] = value
-
-		self.log.info(f'writing {key} with value {value} to params file at {self.REPORTER_PARAMS_FILE}')
-
-		with open(self.REPORTER_PARAMS_FILE, 'w') as f:
-			json.dump(self.params, f)
-			self.log.info(f'{self.REPORTER_PARAMS_FILE} was updated')
+			self.write_params_to_file('wallet_init_balance', available_validator_balance + validator_balance_at_elector)
 
 	def systemctl_status_validator(self):
 		return os.system('systemctl status validator')
@@ -142,9 +127,6 @@ class Reporter(object):
 
 	def validator_wallet(self):
 		return self.ton.GetValidatorWallet()
-
-	def validator_wallet_addr_ok(self, validator_wallet):
-		return validator_wallet.addr == self.WALLET_ADDR_PATH
 
 	def validator_account(self, validator_wallet):
 		return self.ton.GetAccount(validator_wallet.addr)
@@ -303,31 +285,24 @@ class Reporter(object):
 
 	def restricted_addr_changed(self, validator_wallet):
 
-		restricted_addr_changed = 0
-		if not self.params.get('config_code_hash'):
-			self.write_params_to_file('config_code_hash', config_account.codeHash)
+		if not self.params.get('restricted_addr'):
+			self.write_params_to_file('restricted_addr', validator_wallet.addr)
 			return 0
 
+		if validator_wallet.addr != self.params.get('restricted_addr'):
+			return 1
 
-		if self.restricted_addr is not None and validator_wallet.addr != self.restricted_addr:
-			restricted_addr_changed = 1
-
-		self.restricted_addr = validator_wallet.addr
-
-		return restricted_addr_changed
+		return 0
 
 	def restricted_code_changed(self, validator_account):
 
-		if not self.restricted_addr:
+		assert validator_account, 'validator account is not set yet'
+
+		if not self.params.get('restricted_code_hash'):
+			self.write_params_to_file('restricted_code_hash', validator_account.codeHash)
 			return 0
 
-		assert validator_account, 'failed to get validator account'
-
-		if not self.restricted_code_hash:
-			self.restricted_code_hash = validator_account.codeHash
-			return 0
-
-		if validator_account.codeHash != self.restricted_code_hash:
+		if validator_account.codeHash != self.params.get('restricted_code_hash'):
 			return 1
 
 		return 0
@@ -343,14 +318,11 @@ class Reporter(object):
 
 	def total_stake_reduced(self, total_stake):
 
-		if not self.prev_total_stake:
-			self.prev_total_stake = total_stake
+		if not self.params.get('prev_total_stake'):
+			self.write_params_to_file('prev_total_stake', total_stake)
 			return 0
 
-		prev_total_stake = self.prev_total_stake
-		self.prev_total_stake = total_stake
-
-		return int(total_stake / prev_total_stake < 0.8)
+		return int(total_stake / self.params.get('prev_total_stake') < 0.8)
 
 	def get_num_stakers(self, mytoncore_db):
 
@@ -359,26 +331,25 @@ class Reporter(object):
 
 	def num_stakers_reduced(self, num_stakers):
 
-		if not self.prev_num_stakers:
-			self.prev_num_stakers = num_stakers
+		if not self.params.get('prev_num_stakers'):
+			self.write_params_to_file('prev_num_stakers', num_stakers)
 			return 0
 
-		prev_num_stakers = self.prev_num_stakers
-		self.prev_num_stakers = prev_num_stakers
-
-		return int(num_stakers / prev_num_stakers < 0.8)
+		return int(num_stakers / self.params.get('prev_num_stakers') < 0.8)
 
 	def new_offers(self):
 
 		offers = self.ton.GetOffers()
 
-		if not self.offers:
-			self.offers = offers
+		if not self.params.get('offers'):
+			self.write_params_to_file('offers', offers)
 			return 0
 
-		if offers != self.offers:
-			self.log.info(f'new offers: {offers}, old offers: {self.offers} (diff: {list(set(offers) - set(self.offers))})')
+		if offers != self.params.get('offers'):
+			self.log.info(f'new offers: {offers}, old offers: {self.params.get("offers")} (diff: {list(set(offers) - set(self.params.get("offers")))})')
 			return 1
+
+		return 0
 
 	def get_global_version(self):
 
@@ -394,12 +365,12 @@ class Reporter(object):
 
 	def global_version_changed(self, version, capabilities):
 
-		if not self.version and not self.capabilities:
-			self.version = version
-			self.capabilities = capabilities
+		if not self.params.get('version') or not self.params.get('capabilities'):
+			self.write_params_to_file('version', version)
+			self.write_params_to_file('capabilities', capabilities)
 			return 0
 
-		if version != self.version or capabilities != self.capabilities:
+		if version != self.params.get('version') or capabilities != self.params.get('capabilities'):
 			return 1
 
 		return 0
@@ -414,17 +385,21 @@ class Reporter(object):
 		res['recovery'] = 0
 		res['recovery_message'] = ''
 
+		#################################
+		# Exit + Recovery
+		#################################
 		if res['min_efficiency'] < .85:
 			res['exit'] = 1
 			res['recovery'] = 1
 			res['exit_message'] += f'min_efficiency = {res["min_efficiency"]}; '
 			res['recovery_message'] += f'min_efficiency = {res["min_efficiency"]}; '
 
+		#################################
+		# Exit Only
+		#################################
 		if res['fine_changed'] != 0:
 			res['exit'] = 1
-			res['recovery'] = 1
 			res['exit_message'] += f'fine_changed = {res["fine_changed"]}; '
-			res['recovery_message'] += f'fine_changed = {res["fine_changed"]}; '
 
 		if res['elector_addr_changed'] != 0:
 			res['exit'] = 1
@@ -470,6 +445,9 @@ class Reporter(object):
 			res['exit'] = 1
 			res['exit_message'] += f'global_version_changed = {res["global_version_changed"]}; '
 
+		#################################
+		# Recovery Only
+		#################################
 		if res['systemctl_status_validator_ok'] != 1:
 			res['recovery'] = 1
 			res['recovery_message'] += f'systemctl_status_validator_ok = {res["systemctl_status_validator_ok"]}; '
@@ -490,6 +468,9 @@ class Reporter(object):
 			res['recovery'] = 1
 			res['recovery_message'] += f'net_load_avg = {res["net_load_avg"]}; '
 
+		#################################
+		# Set Exit and Recovery message
+		#################################
 		if res['exit_message'] != '':
 			res['exit_message'] = '[EXIT ALERT] ' + res['exit_message']
 
@@ -518,7 +499,7 @@ class Reporter(object):
 
 				validator_wallet = self.validator_wallet()
 				validator_account = self.validator_account(validator_wallet)
-				# res['validator_wallet_addr_ok'] = self.validator_wallet_addr_ok(validator_wallet)
+
 				available_validator_balance = self.available_validator_balance(validator_account)
 				validator_balance_at_elector = self.balance_at_elector(validator_wallet)
 				res['available_validator_balance'] = available_validator_balance
