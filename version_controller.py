@@ -32,19 +32,19 @@ class VersionController(object):
 
 		self.log.info(f'reading version file from {self.REPORTER_PARAMS_FILE}')
 
-		orbs_validator_params = {}
+		validator_params = {}
 		if os.path.isfile(self.REPORTER_PARAMS_FILE):
 			with open(self.REPORTER_PARAMS_FILE, 'r') as f:
-				orbs_validator_params = json.load(f)
+				validator_params = json.load(f)
 
-		if 'version' not in orbs_validator_params:
-			orbs_validator_params['version'] = '0.0.0'
-			self.log.info(f'updating {self.REPORTER_PARAMS_FILE} with version {orbs_validator_params["version"]}')
+		if 'version' not in validator_params:
+			validator_params['version'] = '0.0.0'
+			self.log.info(f'updating {self.REPORTER_PARAMS_FILE} with version {validator_params["version"]}')
 			with open(self.REPORTER_PARAMS_FILE, 'w') as f:
-				json.dump(orbs_validator_params, f)
+				json.dump(validator_params, f)
 
-		self.log.info(f'current version is {orbs_validator_params["version"]}')
-		return version.Version(orbs_validator_params['version'])
+		self.log.info(f'current version is {validator_params["version"]}')
+		return version.Version(validator_params['version'])
 
 	def run(self):
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=Ton Validator Reported by ORBS
+Description=Ton Validator Reported
 After=validator.service
 
 [Service]

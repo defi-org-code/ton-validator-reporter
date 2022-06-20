@@ -8,6 +8,7 @@ import time
 from datetime import datetime
 import logging
 from logging.handlers import RotatingFileHandler
+import traceback
 
 sys.path.append('/usr/src/mytonctrl')
 
@@ -88,7 +89,6 @@ class Reporter(object):
 
 		if 'wallet_init_balance' not in self.params.keys():
 			validator_wallet = self.validator_wallet()
-			self.log.info(f'validator_wallet.addr={validator_wallet.addr}')
 			validator_account = self.validator_account(validator_wallet)
 			available_validator_balance = self.available_validator_balance(validator_account)
 			validator_balance_at_elector = self.balance_at_elector(validator_wallet)
@@ -111,7 +111,7 @@ class Reporter(object):
 		return int(socket.gethostname() == f'validator-{wallet_id}')
 
 	def get_sub_wallet_id(self, wallet):
-		res = self.ton.liteClient.Run(f'runmethod {wallet.addr} wallet_id')
+		res = self.ton.liteClient.Run(f'runmethod {wallet.addrB64} wallet_id')
 		res = self.ton.GetVarFromWorkerOutput(res, "result")
 
 		if not res:
@@ -128,13 +128,13 @@ class Reporter(object):
 		return self.ton.GetValidatorWallet()
 
 	def validator_account(self, validator_wallet):
-		return self.ton.GetAccount(validator_wallet.addr)
+		return self.ton.GetAccount(validator_wallet.addrB64)
 
 	def available_validator_balance(self, validator_account):
 		return validator_account.balance
 
 	def balance_at_elector(self, validator_wallet):
-		return self.ton.GetReturnedStake(self.params.get('elector_addr'), validator_wallet)
+		return self.ton.GetReturnedStake(self.params.get('elector_addr'), validator_wallet.addrB64)
 
 	def get_local_stake(self):
 		return self.ton.GetSettings("stake")
@@ -285,10 +285,10 @@ class Reporter(object):
 	def restricted_addr_changed(self, validator_wallet):
 
 		if not self.params.get('restricted_addr'):
-			self.write_params_to_file('restricted_addr', validator_wallet.addr)
+			self.write_params_to_file('restricted_addr', validator_wallet.addrB64)
 			return 0
 
-		if validator_wallet.addr != self.params.get('restricted_addr'):
+		if validator_wallet.addrB64 != self.params.get('restricted_addr'):
 			return 1
 
 		return 0
@@ -528,8 +528,8 @@ class Reporter(object):
 				active_election_id = self.active_election_id()
 				past_election_ids = self.past_election_ids()
 				mytoncore_db = self.get_mytoncore_db()
-				res['participate_in_active_election'] = self.participates_in_election_id(mytoncore_db, str(active_election_id), validator_wallet.addr)
-				res['participate_in_prev_election'] = self.participates_in_election_id(mytoncore_db, str(max(past_election_ids)), validator_wallet.addr)
+				res['participate_in_active_election'] = self.participates_in_election_id(mytoncore_db, str(active_election_id), validator_wallet.addrB64)
+				res['participate_in_prev_election'] = self.participates_in_election_id(mytoncore_db, str(max(past_election_ids)), validator_wallet.addrB64)
 
 				config15 = self.ton.GetConfig15()
 				self.validation_cycle_in_seconds = config15['validatorsElectedFor']
@@ -578,8 +578,9 @@ class Reporter(object):
 				self.log.info(res)
 
 			except Exception as e:
-				self.log.info(f'unexpected error: {e}')
 				self.log.info(res)
+				self.log.info(f'unexpected error: {e}')
+				self.log.info(traceback.format_exc())
 
 			sleep_sec = self.SLEEP_INTERVAL - time.time() % self.SLEEP_INTERVAL
 			self.log.info(f'executed in {round(time.time() - start_time, 2)} seconds')

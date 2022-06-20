@@ -1,5 +1,5 @@
 [Unit]
-Description=Ton Validator Version Controller by ORBS
+Description=Ton Validator Version Controller
 After=validator.service
 
 [Service]
