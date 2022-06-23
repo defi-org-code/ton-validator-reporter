@@ -35,7 +35,9 @@ class Reporter(object):
 	SECONDS_IN_YEAR = 365 * 24 * 3600
 	SLEEP_INTERVAL = 1 * 60
 
-	MIN_EFFICIENCY_NULL = 100
+	MIN_PROB_NULL = 100
+
+	INIT_BALANCE = 350000
 
 	def __init__(self):
 		super(Reporter, self).__init__()
@@ -57,7 +59,7 @@ class Reporter(object):
 		self.params = self.load_params_from_file()
 		self.init_params()
 
-		self.init_wallet_balance()
+		self.init_wallet_balance(self.INIT_BALANCE)
 
 	def load_params_from_file(self):
 
@@ -85,15 +87,18 @@ class Reporter(object):
 			config_addr = self.ton.GetFullConfigAddr()
 			self.write_params_to_file('config_addr', config_addr)
 
-	def init_wallet_balance(self):
+	def init_wallet_balance(self, init_balance):
 
 		if 'wallet_init_balance' not in self.params.keys():
-			validator_wallet = self.validator_wallet()
-			validator_account = self.validator_account(validator_wallet)
-			available_validator_balance = self.available_validator_balance(validator_account)
-			validator_balance_at_elector = self.balance_at_elector(validator_wallet)
 
-			self.write_params_to_file('wallet_init_balance', available_validator_balance + validator_balance_at_elector)
+			if not init_balance:
+				validator_wallet = self.validator_wallet()
+				validator_account = self.validator_account(validator_wallet)
+				available_validator_balance = self.available_validator_balance(validator_account)
+				validator_balance_at_elector = self.balance_at_elector(validator_wallet)
+				init_balance = available_validator_balance + validator_balance_at_elector
+
+			self.write_params_to_file('wallet_init_balance', init_balance)
 
 	def systemctl_status_validator(self):
 		return os.system('systemctl status validator')
@@ -133,8 +138,14 @@ class Reporter(object):
 	def available_validator_balance(self, validator_account):
 		return validator_account.balance
 
-	def balance_at_elector(self, validator_wallet):
-		return self.ton.GetReturnedStake(self.params.get('elector_addr'), validator_wallet.addrB64)
+	def balance_at_elector(self, adnl_addr):
+		# get stake from json db
+		entries = self.ton.GetElectionEntries()
+
+		if adnl_addr in entries:
+			return entries[adnl_addr]['stake']
+		else:
+			return 0
 
 	def get_local_stake(self):
 		return self.ton.GetSettings("stake")
@@ -154,8 +165,17 @@ class Reporter(object):
 
 	def get_mytoncore_db(self):
 
-		with open(self.MYTONCORE_FILE_PATH, 'r') as f:
-			return json.load(f)
+		i = 0
+		while True:
+			try:
+				with open(self.MYTONCORE_FILE_PATH, 'r') as f:
+					return json.load(f)
+			except Exception as e:
+				self.log.error(f'failed to open {self.MYTONCORE_FILE_PATH} for reading: error={e}, retry #{i}')
+				time.sleep(1)
+				i += 1
+				if i >= 3:
+					raise Exception('failed to open db file for reading')
 
 	def participates_in_election_id(self, mytoncore_db, election_id, wallet_addr):
 
@@ -164,22 +184,18 @@ class Reporter(object):
 
 		return int(next((item for item in mytoncore_db['saveElections'][election_id].values() if item['walletAddr'] == wallet_addr), None) is not None)
 
-	def aggregated_apr(self, total_balance, stake_amount, min_stake_amount=315000):
+	def aggregated_apr(self, total_balance):
 
-		if stake_amount or total_balance or total_balance < stake_amount or stake_amount < min_stake_amount:
+		if not self.params['wallet_init_balance']:
 			return 0
 
-		return 100 * (total_balance / self.validator_params['wallet_init_balance'] - 1)
+		return 100 * (total_balance / self.params['wallet_init_balance'] - 1)
 
-	def last_cycle_apr(self, local_wallet_balance, stake_amount, min_stake_amount=315000):
-		# we assume here that every cycle we will stake stake_amount (get stake to read this number)
-		# and everything is returned to the local wallet
-		# we do not use the rewards generated in this process (stake is not increased every validation cycle) but they are taken in account for the apr calc
-		# we should optimize by increase the stake_amount to move from apr to apy
-		if stake_amount or local_wallet_balance or stake_amount > local_wallet_balance or stake_amount < min_stake_amount:
+	def norm_aggregated_apr(self, aggr_apr):
+		if not aggr_apr:
 			return 0
 
-		return 100 * (local_wallet_balance / stake_amount - 1) * self.SECONDS_IN_YEAR / self.validation_cycle_in_seconds
+		# return 100 * (local_wallet_balance / stake_amount - 1) * self.SECONDS_IN_YEAR / self.validation_cycle_in_seconds
 
 	def get_validator_load(self, validator_id):
 		# get validator load at index validator_id returns -1 if validator id not found
@@ -192,18 +208,20 @@ class Reporter(object):
 		return {
 			'mc_blocks_created': validators_load[validator_id]['masterBlocksCreated'],
 			'mc_blocks_expected': validators_load[validator_id]['masterBlocksExpected'],
+			'mc_prob': validators_load[validator_id]['masterProb'],
 			'wc_blocks_created': validators_load[validator_id]['workBlocksCreated'],
 			'wc_blocks_expected': validators_load[validator_id]['workBlocksExpected'],
+			'wc_prob': validators_load[validator_id]['workchainProb'],
 			'mr': validators_load[validator_id]['mr'],
 			'wr': validators_load[validator_id]['wr'],
 		}
 
-	def calc_min_efficiency(self, validator_load):
-
+	def min_prob(self, validator_load):
+		# probability to close <= blocks_created blocks given th eexpected blocks to close are blocks_expected
 		if validator_load == -1:
-			return self.MIN_EFFICIENCY_NULL
+			return self.MIN_PROB_NULL
 
-		return min(validator_load['mr'], validator_load['wr'])
+		return min(validator_load['mc_prob'], validator_load['wc_prob'])
 
 	def check_fine_changes(self, mytoncore_db):
 
@@ -398,11 +416,11 @@ class Reporter(object):
 		#################################
 		# Exit + Recovery
 		#################################
-		if res['min_efficiency'] < .85:
+		if res['min_prob'] < .05:
 			res['exit'] = 1
 			res['recovery'] = 1
-			res['exit_message'] += f'min_efficiency = {res["min_efficiency"]}; '
-			res['recovery_message'] += f'min_efficiency = {res["min_efficiency"]}; '
+			res['exit_message'] += f'min_prob = {res["min_prob"]}; '
+			res['recovery_message'] += f'min_prob = {res["min_prob"]}; '
 
 		#################################
 		# Exit Only
@@ -504,6 +522,9 @@ class Reporter(object):
 
 			try:
 				self.log.info(f'validator reporter started at {datetime.utcnow()}')
+				mytoncore_db = self.get_mytoncore_db()
+				self.params = self.load_params_from_file()
+
 				systemctl_status_validator = self.systemctl_status_validator()
 				res['systemctl_status_validator'] = systemctl_status_validator
 				res['systemctl_status_validator_ok'] = self.systemctl_status_validator_ok(systemctl_status_validator)
@@ -514,8 +535,11 @@ class Reporter(object):
 				validator_wallet = self.validator_wallet()
 				validator_account = self.validator_account(validator_wallet)
 
+				adnl_addr = self.ton.GetAdnlAddr()
+				res['adnl_addr'] = adnl_addr
+
 				available_validator_balance = self.available_validator_balance(validator_account)
-				validator_balance_at_elector = self.balance_at_elector(validator_wallet)
+				validator_balance_at_elector = self.balance_at_elector(adnl_addr)
 				res['available_validator_balance'] = available_validator_balance
 				res['validator_balance_at_elector'] = validator_balance_at_elector
 				res['total_validator_balance'] = available_validator_balance + validator_balance_at_elector
@@ -527,16 +551,15 @@ class Reporter(object):
 
 				active_election_id = self.active_election_id()
 				past_election_ids = self.past_election_ids()
-				mytoncore_db = self.get_mytoncore_db()
 				res['participate_in_active_election'] = self.participates_in_election_id(mytoncore_db, str(active_election_id), validator_wallet.addrB64)
 				res['participate_in_prev_election'] = self.participates_in_election_id(mytoncore_db, str(max(past_election_ids)), validator_wallet.addrB64)
 
 				config15 = self.ton.GetConfig15()
 				self.validation_cycle_in_seconds = config15['validatorsElectedFor']
-				res['last_cycle_apr'] = self.last_cycle_apr(available_validator_balance, res['local_stake'])
-				res['aggregated_apr'] = self.aggregated_apr(res['total_validator_balance'], res['local_stake'])
+				res['aggregated_apr'] = self.aggregated_apr(res['total_validator_balance'])
+				# res['norm_aggregated_apr'] = self.norm_aggregated_apr(res['aggregated_apr'])
 				res['validator_load'] = self.get_validator_load(validator_index)
-				res['min_efficiency'] = self.calc_min_efficiency(res['validator_load'])
+				res['min_prob'] = self.min_prob(res['validator_load'])
 				res['fine_changed'] = self.check_fine_changes(mytoncore_db)
 				res['net_load_avg'], res['disk_load_pct_avg'], res['mem_load_avg'] = self.get_load_stats(mytoncore_db)
 
