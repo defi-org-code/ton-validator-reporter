@@ -148,7 +148,10 @@ class Reporter(object):
 			return 0
 
 	def get_local_stake(self):
-		return self.ton.GetSettings("stake")
+		return int(self.ton.GetSettings("stake"))
+
+	def get_local_stake_percent(self):
+		return int(self.ton.GetSettings("stakePercent"))
 
 	def get_stats(self):
 		return self.ton.GetValidatorStatus()
@@ -165,17 +168,8 @@ class Reporter(object):
 
 	def get_mytoncore_db(self):
 
-		i = 0
-		while True:
-			try:
-				with open(self.MYTONCORE_FILE_PATH, 'r') as f:
-					return json.load(f)
-			except Exception as e:
-				self.log.error(f'failed to open {self.MYTONCORE_FILE_PATH} for reading: error={e}, retry #{i}')
-				time.sleep(1)
-				i += 1
-				if i >= 3:
-					raise Exception('failed to open db file for reading')
+		with open(self.MYTONCORE_FILE_PATH, 'r') as f:
+			return json.load(f)
 
 	def participates_in_election_id(self, mytoncore_db, election_id, wallet_addr):
 
@@ -197,11 +191,18 @@ class Reporter(object):
 
 		# return 100 * (local_wallet_balance / stake_amount - 1) * self.SECONDS_IN_YEAR / self.validation_cycle_in_seconds
 
-	def get_validator_load(self, validator_id):
+	def get_validator_load(self, validator_id, election_id):
 		# get validator load at index validator_id returns -1 if validator id not found
 		# o.w returns the expected and actual blocks created for the last 2000 seconds
 		# mr and wr are blocks_created/blocks_expected
-		validators_load = self.ton.GetValidatorsLoad()
+		start_time = election_id
+		end_time = int(time.time())-3
+
+		if end_time - start_time > 65536:
+			self.log.error(f'unexpected time diff between end_time = {end_time} and start_time = {start_time}')
+			start_time = end_time - 3 * 3600  # last 3 hours
+
+		validators_load = self.ton.GetValidatorsLoad(start_time, end_time)
 		if validator_id not in validators_load.keys():
 			return -1
 
@@ -406,6 +407,19 @@ class Reporter(object):
 	def get_pid(self):
 		return os.getpid()
 
+	def exit_next_elections(self):
+
+		self.ton.SetSettings("stake", 0)
+		self.ton.SetSettings("stakePercent", 0)
+
+		stake = self.get_local_stake()
+		stake_pct = self.get_local_stake_percent()
+
+		if stake != 0 or stake_pct != 0:
+			self.log.error(f'Failed to set stake and stake_percent to 0 (stake={stake}, stake_percent={stake_pct})')
+		else:
+			self.log.info(f'Successfully set stake and stake_percent to 0')
+
 	def recovery_and_alert(self, res):
 
 		res['exit'] = 0
@@ -505,6 +519,7 @@ class Reporter(object):
 		#################################
 		if res['exit_message'] != '':
 			res['exit_message'] = '[EXIT ALERT] ' + res['exit_message']
+			self.exit_next_elections()
 
 		if res['recovery_message'] != '':
 			res['recovery_message'] = '[RECOVERY ALERT] ' + res['recovery_message']
@@ -515,13 +530,15 @@ class Reporter(object):
 
 	def run(self):
 		res = {}
+		retry = 0
 
 		while True:
 
 			start_time = time.time()
+			success = True
 
 			try:
-				self.log.info(f'validator reporter started at {datetime.utcnow()}')
+				self.log.info(f'validator reporter started at {datetime.utcnow()} (retry {retry})')
 				mytoncore_db = self.get_mytoncore_db()
 				self.params = self.load_params_from_file()
 
@@ -558,7 +575,7 @@ class Reporter(object):
 				self.validation_cycle_in_seconds = config15['validatorsElectedFor']
 				res['aggregated_apr'] = self.aggregated_apr(res['total_validator_balance'])
 				# res['norm_aggregated_apr'] = self.norm_aggregated_apr(res['aggregated_apr'])
-				res['validator_load'] = self.get_validator_load(validator_index)
+				res['validator_load'] = self.get_validator_load(validator_index, str(max(past_election_ids)))
 				res['min_prob'] = self.min_prob(res['validator_load'])
 				res['fine_changed'] = self.check_fine_changes(mytoncore_db)
 				res['net_load_avg'], res['disk_load_pct_avg'], res['mem_load_avg'] = self.get_load_stats(mytoncore_db)
@@ -600,15 +617,22 @@ class Reporter(object):
 				self.report(res)
 				self.log.info(res)
 
+				# TODO: last cycle apr
+				# TODO: balance at elector, remove double print
+
 			except Exception as e:
+				retry += 1
+				success = False
 				self.log.info(res)
 				self.log.info(f'unexpected error: {e}')
 				self.log.info(traceback.format_exc())
 
-			sleep_sec = self.SLEEP_INTERVAL - time.time() % self.SLEEP_INTERVAL
-			self.log.info(f'executed in {round(time.time() - start_time, 2)} seconds')
-			self.log.info(f'sleep for {round(sleep_sec)} seconds')
-			time.sleep(sleep_sec)
+			if success or retry >= 3:
+				retry = 0
+				sleep_sec = self.SLEEP_INTERVAL - time.time() % self.SLEEP_INTERVAL
+				self.log.info(f'executed in {round(time.time() - start_time, 2)} seconds')
+				self.log.info(f'sleep for {round(sleep_sec)} seconds')
+				time.sleep(sleep_sec)
 
 
 if __name__ == '__main__':
