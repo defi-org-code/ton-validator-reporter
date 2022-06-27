@@ -9,12 +9,15 @@ from datetime import datetime
 import logging
 from logging.handlers import RotatingFileHandler
 import traceback
+from logging import Formatter, getLogger, StreamHandler
 
 sys.path.append('/usr/src/mytonctrl')
 
 import mytonctrl
 from mypylib.mypylib import *
 from mytoncore import GetMemoryInfo
+
+local = MyPyClass(__file__)
 
 
 class Reporter(object):
@@ -29,7 +32,6 @@ class Reporter(object):
 	MYTONCORE_PATH = '/usr/src'
 	REPORTER_FILE = f'{REPORTER_DIR}/report.json'
 	validator_params = dict()
-	validation_cycle_in_seconds = None
 	LOG_FILENAME = f'/var/log/reporter/reporter.log'
 
 	SECONDS_IN_YEAR = 365 * 24 * 3600
@@ -42,16 +44,7 @@ class Reporter(object):
 	def __init__(self):
 		super(Reporter, self).__init__()
 
-		logging.basicConfig(format='[%(asctime)s] %(filename)s:%(lineno)s - %(message)s', filename=self.LOG_FILENAME, level=logging.INFO)
-		logging.Formatter(
-			fmt='%(asctime)s.%(msecs)03d',
-			datefmt='%Y-%m-%d,%H:%M:%S'
-		)
-		log = logging.getLogger()
-		handler = RotatingFileHandler(self.LOG_FILENAME, maxBytes=3 * 1024 * 1024, backupCount=5, mode='a')
-		log.addHandler(handler)
-
-		self.log = logging
+		self.log = self.init_logger()
 		self.log.info(f'validator reporter init started at {datetime.utcnow()}')
 
 		self.ton = mytonctrl.MyTonCore()
@@ -60,6 +53,26 @@ class Reporter(object):
 		self.init_params()
 
 		self.init_wallet_balance(self.INIT_BALANCE)
+		self.init_start_work_time(1655935277)
+
+		self.total_balance = None
+		self.last_cycle_apr = None
+
+	def init_logger(self):
+
+		formatter = Formatter(fmt='[%(asctime)s] %(filename)s:%(lineno)s - %(message)s', datefmt='%Y-%m-%d,%H:%M:%S')
+		stream_handler = StreamHandler()
+		stream_handler.setFormatter(formatter)
+
+		file_handler = RotatingFileHandler(self.LOG_FILENAME, maxBytes=3 * 1024 * 1024, backupCount=5, mode='a')
+		file_handler.setFormatter(formatter)
+
+		logger = getLogger('reporter')
+		logger.addHandler(stream_handler)
+		logger.addHandler(file_handler)
+		logger.setLevel(logging.DEBUG)
+
+		return logger
 
 	def load_params_from_file(self):
 
@@ -95,10 +108,15 @@ class Reporter(object):
 				validator_wallet = self.validator_wallet()
 				validator_account = self.validator_account(validator_wallet)
 				available_validator_balance = self.available_validator_balance(validator_account)
-				validator_balance_at_elector = self.balance_at_elector(validator_wallet)
-				init_balance = available_validator_balance + validator_balance_at_elector
+				init_balance = available_validator_balance
 
 			self.write_params_to_file('wallet_init_balance', init_balance)
+
+	def init_start_work_time(self, start_work_time=None):
+
+		if 'start_work_time' not in self.params.keys():
+			start_work_time = start_work_time or time.time()
+			self.write_params_to_file('start_work_time', start_work_time)
 
 	def systemctl_status_validator(self):
 		return os.system('systemctl status validator')
@@ -147,6 +165,23 @@ class Reporter(object):
 		else:
 			return 0
 
+	def estimate_total_validator_balance(self, mytoncore_db, past_election_ids, adnl_addr, available_validator_balance):
+
+		reported_stakes = list()
+		reported_stakes.append(self.get_stake_from_mytoncore_db(mytoncore_db, past_election_ids[0], adnl_addr))
+		reported_stakes.append(self.get_stake_from_mytoncore_db(mytoncore_db, past_election_ids[1], adnl_addr))
+		reported_stakes.append(self.get_stake_from_mytoncore_db(mytoncore_db, past_election_ids[2], adnl_addr))
+
+		if reported_stakes[0]:
+			return sum(reported_stakes[0:2]) + available_validator_balance
+
+		elif reported_stakes[1]:
+			return sum(reported_stakes[1:3]) + available_validator_balance
+
+		else:
+			# fetch balance from elector as we might sent the funds to elector but mytoncore_db was not updated yet
+			return self.balance_at_elector(adnl_addr) + available_validator_balance
+
 	def get_local_stake(self):
 		return int(self.ton.GetSettings("stake"))
 
@@ -156,12 +191,23 @@ class Reporter(object):
 	def get_stats(self):
 		return self.ton.GetValidatorStatus()
 
-	def past_election_ids(self):
-		cmd = f"runmethodfull {self.params.get('elector_addr')} past_election_ids"
+	def past_election_ids(self, mytoncore_db):
+		# cmd = f"runmethodfull {self.params.get('elector_addr')} past_election_ids"
+		#
+		# result = self.ton.liteClient.Run(cmd)
+		# activeElectionId = self.ton.GetVarFromWorkerOutput(result, "result")
+		# return sorted([int(s) for s in activeElectionId.replace('(', '').replace(')', '').split() if s.isdigit()], reverse=True)
+		return sorted(mytoncore_db['saveElections'].keys(), reverse=True)
 
-		result = self.ton.liteClient.Run(cmd)
-		activeElectionId = self.ton.GetVarFromWorkerOutput(result, "result")
-		return [int(s) for s in activeElectionId.replace('(', '').replace(')', '').split() if s.isdigit()]
+	def participate_in_next_validation(self, mytoncore_db, past_election_ids, adnl_addr):
+		return int(float(past_election_ids[0]) > time.time() and self.participates_in_election_id(mytoncore_db, str(past_election_ids[0]), adnl_addr))
+
+	def participate_in_curr_validation(self, mytoncore_db, past_election_ids, adnl_addr):
+
+		if float(past_election_ids[0]) < time.time():
+			return self.participates_in_election_id(mytoncore_db, str(past_election_ids[0]), adnl_addr)
+		else:
+			return self.participates_in_election_id(mytoncore_db, str(past_election_ids[1]), adnl_addr)
 
 	def active_election_id(self):
 		return self.ton.GetActiveElectionId(self.params.get('elector_addr'))
@@ -171,31 +217,55 @@ class Reporter(object):
 		with open(self.MYTONCORE_FILE_PATH, 'r') as f:
 			return json.load(f)
 
-	def participates_in_election_id(self, mytoncore_db, election_id, wallet_addr):
+	def participates_in_election_id(self, mytoncore_db, election_id, adnl_addr):
 
 		if 'saveElections' not in mytoncore_db or election_id not in mytoncore_db['saveElections']:
-			return -1
+			return 0
 
-		return int(next((item for item in mytoncore_db['saveElections'][election_id].values() if item['walletAddr'] == wallet_addr), None) is not None)
+		return int(mytoncore_db['saveElections'][election_id].get(adnl_addr) is not None)
 
-	def aggregated_apr(self, total_balance):
+	def get_stake_from_mytoncore_db(self, mytoncore_db, election_id, adnl_addr):
+
+		if 'saveElections' not in mytoncore_db or election_id not in mytoncore_db['saveElections'] or adnl_addr not in mytoncore_db['saveElections'][election_id]:
+			return 0
+
+		return int(mytoncore_db['saveElections'][election_id][adnl_addr]['stake'])
+
+	def roi(self, total_balance):
 
 		if not self.params['wallet_init_balance']:
 			return 0
 
 		return 100 * (total_balance / self.params['wallet_init_balance'] - 1)
 
-	def norm_aggregated_apr(self, aggr_apr):
-		if not aggr_apr:
+	def apy(self, roi):
+
+		if not roi:
 			return 0
 
-		# return 100 * (local_wallet_balance / stake_amount - 1) * self.SECONDS_IN_YEAR / self.validation_cycle_in_seconds
+		return roi * self.SECONDS_IN_YEAR / (time.time() - self.params['start_work_time'])
+
+	def calc_last_cycle_apr(self, total_balance):
+
+		if not self.total_balance:
+			self.total_balance = total_balance
+			return None
+
+		if total_balance != self.total_balance:
+			config15 = self.ton.GetConfig15()
+			validation_cycle_in_seconds = config15['validatorsElectedFor']
+
+			roi = 100 * (total_balance / self.total_balance - 1)
+			self.total_balance = total_balance
+			self.last_cycle_apr = roi * self.SECONDS_IN_YEAR / validation_cycle_in_seconds
+
+		return self.last_cycle_apr
 
 	def get_validator_load(self, validator_id, election_id):
 		# get validator load at index validator_id returns -1 if validator id not found
 		# o.w returns the expected and actual blocks created for the last 2000 seconds
 		# mr and wr are blocks_created/blocks_expected
-		start_time = election_id
+		start_time = int(election_id)
 		end_time = int(time.time())-3
 
 		if end_time - start_time > 65536:
@@ -426,6 +496,8 @@ class Reporter(object):
 		res['exit_message'] = ''
 		res['recovery'] = 0
 		res['recovery_message'] = ''
+		res['warning'] = 0
+		res['warning_message'] = ''
 
 		#################################
 		# Exit + Recovery
@@ -488,8 +560,8 @@ class Reporter(object):
 			res['exit_message'] += f'global_version_changed = {res["global_version_changed"]}; '
 
 		if res['reporter_pid_changed'] != 0:
-			res['exit'] = 1
-			res['exit_message'] += f'reporter_pid_changed = {res["reporter_pid_changed"]}; '
+			res['warning'] = 1
+			res['warning_message'] += f'reporter_pid_changed = {res["reporter_pid_changed"]}; '
 
 		#################################
 		# Recovery Only
@@ -524,6 +596,9 @@ class Reporter(object):
 		if res['recovery_message'] != '':
 			res['recovery_message'] = '[RECOVERY ALERT] ' + res['recovery_message']
 
+		if res['warning_message'] != '':
+			res['warning_message'] = '[WARNING ALERT] ' + res['warning_message']
+
 	def report(self, res):
 		with open(self.REPORTER_FILE, 'w') as f:
 			json.dump(res, f)
@@ -556,25 +631,23 @@ class Reporter(object):
 				res['adnl_addr'] = adnl_addr
 
 				available_validator_balance = self.available_validator_balance(validator_account)
-				validator_balance_at_elector = self.balance_at_elector(adnl_addr)
 				res['available_validator_balance'] = available_validator_balance
-				res['validator_balance_at_elector'] = validator_balance_at_elector
-				res['total_validator_balance'] = available_validator_balance + validator_balance_at_elector
+
 				res['local_stake'] = self.get_local_stake()
+				res['local_stake_percent'] = self.get_local_stake_percent()
 
 				stats = self.get_stats()
 				res['out_of_sync'] = stats['outOfSync']
 				res['is_working'] = int(stats['isWorking'])
 
-				active_election_id = self.active_election_id()
-				past_election_ids = self.past_election_ids()
-				res['participate_in_active_election'] = self.participates_in_election_id(mytoncore_db, str(active_election_id), validator_wallet.addrB64)
-				res['participate_in_prev_election'] = self.participates_in_election_id(mytoncore_db, str(max(past_election_ids)), validator_wallet.addrB64)
+				past_election_ids = self.past_election_ids(mytoncore_db)
+				res['participate_in_next_validation'] = self.participate_in_next_validation(mytoncore_db, past_election_ids, adnl_addr)
+				res['participate_in_curr_validation'] = self.participate_in_curr_validation(mytoncore_db, past_election_ids, adnl_addr)
+				res['total_validator_balance'] = self.estimate_total_validator_balance(mytoncore_db, past_election_ids, adnl_addr, available_validator_balance)
 
-				config15 = self.ton.GetConfig15()
-				self.validation_cycle_in_seconds = config15['validatorsElectedFor']
-				res['aggregated_apr'] = self.aggregated_apr(res['total_validator_balance'])
-				# res['norm_aggregated_apr'] = self.norm_aggregated_apr(res['aggregated_apr'])
+				res['roi'] = self.roi(res['total_validator_balance'])
+				res['apy'] = self.apy(res['roi'])
+				res['last_cycle_apr'] = self.calc_last_cycle_apr(res['total_validator_balance'])
 				res['validator_load'] = self.get_validator_load(validator_index, str(max(past_election_ids)))
 				res['min_prob'] = self.min_prob(res['validator_load'])
 				res['fine_changed'] = self.check_fine_changes(mytoncore_db)
@@ -617,8 +690,7 @@ class Reporter(object):
 				self.report(res)
 				self.log.info(res)
 
-				# TODO: last cycle apr
-				# TODO: balance at elector, remove double print
+				# TODO: last cycle apr, exit + recovery flag in case retry=3
 
 			except Exception as e:
 				retry += 1

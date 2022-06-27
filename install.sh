@@ -73,7 +73,7 @@ echo "adding exit_stake script to ${SRC_DIR}"
 cp 'exit_stake.py' ${SRC_DIR}
 
 echo "adding reset_params script to ${SRC_DIR}"
-cp 'reset_params.py' ${SRC_DIR}
+cp 'enter_stake.py' ${SRC_DIR}
 
 echo "restarting ${SERVICE_NAME}.service"
 sudo systemctl daemon-reload
