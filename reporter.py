@@ -54,9 +54,10 @@ class Reporter(object):
 
 		self.init_wallet_balance(self.INIT_BALANCE)
 		self.init_start_work_time(1655935277)
+		self.init_config15()
 
-		self.total_balance = None
-		self.last_cycle_apr = None
+		self.total_balance = self.params.get('total_balance')
+		self.last_cycle_apr = self.params.get('last_cycle_apr')
 
 	def init_logger(self):
 
@@ -99,6 +100,21 @@ class Reporter(object):
 		if not self.params.get('config_addr'):
 			config_addr = self.ton.GetFullConfigAddr()
 			self.write_params_to_file('config_addr', config_addr)
+
+	def init_config15(self):
+
+		config15 = self.ton.GetConfig15()
+		if not self.params.get('validators_elected_for'):
+			self.write_params_to_file('validators_elected_for', config15['validatorsElectedFor'])
+
+		if not self.params.get('elections_start_before'):
+			self.write_params_to_file('elections_start_before', config15['electionsStartBefore'])
+
+		if not self.params.get('elections_end_before'):
+			self.write_params_to_file('elections_end_before', config15['electionsEndBefore'])
+
+		if not self.params.get('stake_held_for'):
+			self.write_params_to_file('stake_held_for', config15['stakeHeldFor'])
 
 	def init_wallet_balance(self, init_balance):
 
@@ -212,6 +228,21 @@ class Reporter(object):
 	def active_election_id(self):
 		return self.ton.GetActiveElectionId(self.params.get('elector_addr'))
 
+	def elections_ends_in(self, active_election_id):
+
+		if not active_election_id:
+			return 0
+
+		return active_election_id - self.params['elections_end_before']
+
+	def validation_ends_in(self, past_election_ids):
+
+		if float(past_election_ids[0]) > time.time():
+			return int((int(past_election_ids[0]) - time.time()) / 60)
+
+		else:
+			return int((int(past_election_ids[1]) + int(self.params['validators_elected_for']) - time.time()) / 60)
+
 	def get_mytoncore_db(self):
 
 		with open(self.MYTONCORE_FILE_PATH, 'r') as f:
@@ -249,15 +280,17 @@ class Reporter(object):
 
 		if not self.total_balance:
 			self.total_balance = total_balance
+			self.write_params_to_file('total_balance', self.total_balance)
 			return None
 
 		if total_balance != self.total_balance:
-			config15 = self.ton.GetConfig15()
-			validation_cycle_in_seconds = config15['validatorsElectedFor']
+			validation_cycle_in_seconds = self.params['validators_elected_for']
 
 			roi = 100 * (total_balance / self.total_balance - 1)
 			self.total_balance = total_balance
 			self.last_cycle_apr = roi * self.SECONDS_IN_YEAR / validation_cycle_in_seconds
+			self.write_params_to_file('total_balance', self.total_balance)
+			self.write_params_to_file('last_cycle_apr', self.last_cycle_apr)
 
 		return self.last_cycle_apr
 
@@ -558,6 +591,22 @@ class Reporter(object):
 		if res['global_version_changed'] != 0:
 			res['exit'] = 1
 			res['exit_message'] += f'global_version_changed = {res["global_version_changed"]}; '
+		#
+		if res['validators_elected_for_changed'] != 0:
+			res['exit'] = 1
+			res['exit_message'] += f'validators_elected_for_changed = {res["validators_elected_for_changed"]}; '
+
+		if res['elections_start_before_changed'] != 0:
+			res['exit'] = 1
+			res['exit_message'] += f'elections_start_before_changed = {res["elections_start_before_changed"]}; '
+
+		if res['elections_end_before_changed'] != 0:
+			res['exit'] = 1
+			res['exit_message'] += f'elections_end_before_changed = {res["elections_end_before_changed"]}; '
+
+		if res['stake_held_for_changed'] != 0:
+			res['exit'] = 1
+			res['exit_message'] += f'stake_held_for_changed = {res["stake_held_for_changed"]}; '
 
 		if res['reporter_pid_changed'] != 0:
 			res['warning'] = 1
@@ -640,9 +689,19 @@ class Reporter(object):
 				res['out_of_sync'] = stats['outOfSync']
 				res['is_working'] = int(stats['isWorking'])
 
+				config15 = self.ton.GetConfig15()
+				res['validators_elected_for_changed'] = int(config15['validatorsElectedFor'] != self.params['validators_elected_for'])
+				res['elections_start_before_changed'] = int(config15['electionsStartBefore'] != self.params['elections_start_before'])
+				res['elections_end_before_changed'] = int(config15['electionsEndBefore'] != self.params['elections_end_before'])
+				res['stake_held_for_changed'] = int(config15['stakeHeldFor'] != self.params['stake_held_for'])
+
 				past_election_ids = self.past_election_ids(mytoncore_db)
 				res['participate_in_next_validation'] = self.participate_in_next_validation(mytoncore_db, past_election_ids, adnl_addr)
 				res['participate_in_curr_validation'] = self.participate_in_curr_validation(mytoncore_db, past_election_ids, adnl_addr)
+				res['active_election_id'] = self.active_election_id()
+				res['elections_ends_in'] = self.elections_ends_in(res['active_election_id'])
+				res['validations_ends_in'] = self.validation_ends_in(past_election_ids)
+
 				res['total_validator_balance'] = self.estimate_total_validator_balance(mytoncore_db, past_election_ids, adnl_addr, available_validator_balance)
 
 				res['roi'] = self.roi(res['total_validator_balance'])
