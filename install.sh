@@ -19,6 +19,7 @@ REPORTER_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validato
 VALIDATOR_REPORTER_SERVICE_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/${SERVICE_NAME}.service
 EXIT_STAKE_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/exit_stake.py
 RESET_PARAMS_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/reset_params.py
+HARD_PARAMS_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/hard_params.json
 
 if [ -d "${INSTALLER_DIR}" ]; then
 	echo "removing ${INSTALLER_DIR}"
@@ -63,6 +64,9 @@ wget "${EXIT_STAKE_DESCRIPTOR}"
 echo "Downloading reset_params script ..."
 wget "${RESET_PARAMS_DESCRIPTOR}"
 
+echo "Downloading hard_params script ..."
+wget "${HARD_PARAMS_DESCRIPTOR}"
+
 echo "adding ${SERVICE_NAME}.service to systemd"
 cp ${SERVICE_NAME}.service ${SYSTEMD_DIR}
 
@@ -73,7 +77,10 @@ echo "adding exit_stake script to ${SRC_DIR}"
 cp 'exit_stake.py' ${SRC_DIR}
 
 echo "adding reset_params script to ${SRC_DIR}"
-cp 'enter_stake.py' ${SRC_DIR}
+cp 'reset_and_enter.py' ${SRC_DIR}
+
+echo "adding hard_params script to ${REPORTER_DB}"
+cp 'constants.json' ${REPORTER_DB}
 
 echo "restarting ${SERVICE_NAME}.service"
 sudo systemctl daemon-reload

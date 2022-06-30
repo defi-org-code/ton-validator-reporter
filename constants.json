@@ -1,0 +1,16 @@
+{
+	"restricted_wallet_addr": "Ef_SKbRYsak4RmKXR1aBqWl7lTn3IR0velC_lYP_rBH6xuAw",
+	"elector_addr": "-1:3333333333333333333333333333333333333333333333333333333333333333",
+	"config_addr": "-1:5555555555555555555555555555555555555555555555555555555555555555",
+	"validators_elected_for": 65536,
+	"elections_start_before": 32768,
+	"elections_end_before": 8192,
+	"stake_held_for": 32768,
+	"suggested_fine": 101.0,
+	"suggested_fine_part": 0.0,
+	"elector_code_hash": "e3d87857010cbeafd51b7b138554bf096557f79f9dba51bdb99aa4de314172c4",
+	"config_code_hash": "c870b159119a3b67c98754cd4e569257a6a0e58439c49081dced9ea113d045b4",
+	"restricted_code_hash": "565a3408bdf1c091d3a90f276d34f89ee465df06d6176904e99300992013fdc1",
+	"version": 2,
+	"capabilities": 46
+}

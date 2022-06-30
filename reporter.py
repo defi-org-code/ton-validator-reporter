@@ -10,6 +10,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 import traceback
 from logging import Formatter, getLogger, StreamHandler
+import copy
 
 sys.path.append('/usr/src/mytonctrl')
 
@@ -20,7 +21,88 @@ from mytoncore import GetMemoryInfo
 local = MyPyClass(__file__)
 
 
-class Reporter(object):
+class MTC(object):
+
+	def __init__(self):
+		self.mtc = mytonctrl.MyTonCore()
+
+	def get_validators_load(self, start, end):
+
+		assert start < end, 'start time should be less than end time'
+
+		cmd = "checkloadall {start} {end} {filePrefix}".format(end=end, start=start, filePrefix="t01")
+		result = self.mtc.liteClient.Run(cmd, timeout=30)
+		lines = result.split('\n')
+		data = dict()
+		for line in lines:
+			if "val" in line and "pubkey" in line:
+				buff = line.split(' ')
+				vid = buff[1]
+				vid = vid.replace('#', '')
+				vid = vid.replace(':', '')
+				vid = int(vid)
+				pubkey = buff[3]
+				pubkey = pubkey.replace(',', '')
+				blocksCreated_buff = buff[6]
+				blocksCreated_buff = blocksCreated_buff.replace('(', '')
+				blocksCreated_buff = blocksCreated_buff.replace(')', '')
+				blocksCreated_buff = blocksCreated_buff.split(',')
+				masterBlocksCreated = float(blocksCreated_buff[0])
+				workBlocksCreated = float(blocksCreated_buff[1])
+				blocksExpected_buff = buff[8]
+				blocksExpected_buff = blocksExpected_buff.replace('(', '')
+				blocksExpected_buff = blocksExpected_buff.replace(')', '')
+				blocksExpected_buff = blocksExpected_buff.split(',')
+				masterBlocksExpected = float(blocksExpected_buff[0])
+				workBlocksExpected = float(blocksExpected_buff[1])
+
+				masterProb = float(buff[10])
+				workchainProb = float(buff[12])
+
+				if masterBlocksExpected == 0:
+					mr = 0
+				else:
+					mr = masterBlocksCreated / masterBlocksExpected
+				if workBlocksExpected == 0:
+					wr = 0
+				else:
+					wr = workBlocksCreated / workBlocksExpected
+				r = (mr + wr) / 2
+				efficiency = round(r * 100, 2)
+				if efficiency > 10:
+					online = True
+				else:
+					online = False
+				item = dict()
+				item["id"] = vid
+				item["pubkey"] = pubkey
+				item["masterBlocksCreated"] = masterBlocksCreated
+				item["workBlocksCreated"] = workBlocksCreated
+				item["masterBlocksExpected"] = masterBlocksExpected
+				item["workBlocksExpected"] = workBlocksExpected
+				item["mr"] = mr
+				item["wr"] = wr
+				item["efficiency"] = efficiency
+				item["online"] = online
+				item["masterProb"] = masterProb
+				item["workchainProb"] = workchainProb
+
+				# Get complaint file
+				index = lines.index(line)
+				nextIndex = index + 2
+				if nextIndex < len(lines):
+					nextLine = lines[nextIndex]
+					if "COMPLAINT_SAVED" in nextLine:
+						buff = nextLine.split('\t')
+						item["var1"] = buff[1]
+						item["var2"] = buff[2]
+						item["fileName"] = buff[3]
+				data[vid] = item
+
+		return data
+
+
+class Reporter(MTC):
 	HOME = Path.home()
 	RESTRICTED_WALLET_NAME = 'validator_wallet_001'
 	WALLET_PATH = f'{HOME}/.local/share/mytoncore/wallets/'
@@ -28,10 +110,9 @@ class Reporter(object):
 	WALLET_ADDR_PATH = f'{WALLET_PATH}/{RESTRICTED_WALLET_NAME}.addr'
 	MYTONCORE_FILE_PATH = f'{HOME}/.local/share/mytoncore/mytoncore.db'
 	REPORTER_DIR = f'/var/reporter'
-	REPORTER_PARAMS_FILE = f'{REPORTER_DIR}/params.json'
-	MYTONCORE_PATH = '/usr/src'
-	REPORTER_FILE = f'{REPORTER_DIR}/report.json'
-	validator_params = dict()
+	METRICS_FILE = f'{REPORTER_DIR}/metrics.json'
+	CONST_FILE = f'{REPORTER_DIR}/constants.json'
+	EMERGENCY_FLAGS_FILE = f'{REPORTER_DIR}/emergency_flags.json'
 	LOG_FILENAME = f'/var/log/reporter/reporter.log'
 
 	SECONDS_IN_YEAR = 365 * 24 * 3600
@@ -47,17 +128,16 @@ class Reporter(object):
 		self.log = self.init_logger()
 		self.log.info(f'validator reporter init started at {datetime.utcnow()}')
 
-		self.ton = mytonctrl.MyTonCore()
-
-		self.params = self.load_params_from_file()
-		self.init_params()
+		self.metrics = self.load_json_from_file(self.METRICS_FILE)
+		self.const = self.load_json_from_file(self.CONST_FILE)
+		self.emergency_flags = self.load_json_from_file(self.EMERGENCY_FLAGS_FILE)
 
 		self.init_wallet_balance(self.INIT_BALANCE)
-		self.init_start_work_time(1655935277)
-		self.init_config15()
+		self.init_start_work_time(1655935277)  # TODO: remove me
+		self.emergency_flags_init()
 
-		self.total_balance = self.params.get('total_balance')
-		self.last_cycle_apr = self.params.get('last_cycle_apr')
+		self.last_saved_total_balance = self.metrics.get('last_saved_total_balance')
+		self.last_cycle_apr = self.metrics.get('last_cycle_apr')
 
 	def init_logger(self):
 
@@ -75,50 +155,55 @@ class Reporter(object):
 
 		return logger
 
-	def load_params_from_file(self):
+	def load_json_from_file(self, file_name):
 
-		if os.path.isfile(self.REPORTER_PARAMS_FILE):
-			with open(self.REPORTER_PARAMS_FILE, 'r') as f:
+		if os.path.isfile(file_name):
+			with open(file_name, 'r') as f:
 				return json.load(f)
 
-	def write_params_to_file(self, key, value):
+	def save_json_to_file(self, json_dict, file_name):
 
-		self.params[key] = value
+		with open(file_name, 'w') as f:
+			json.dump(json_dict, f)
+			self.log.info(f'{file_name} was updated')
 
-		self.log.info(f'writing {key} with value {value} to params file at {self.REPORTER_PARAMS_FILE}')
+	def write_metrics_to_file(self, key, value):
 
-		with open(self.REPORTER_PARAMS_FILE, 'w') as f:
-			json.dump(self.params, f)
-			self.log.info(f'{self.REPORTER_PARAMS_FILE} was updated')
+		self.metrics[key] = value
+		self.log.info(f'writing {key} with value {value} to metrics file at {self.METRICS_FILE}')
 
-	def init_params(self):
+		with open(self.METRICS_FILE, 'w') as f:
+			json.dump(self.metrics, f)
+			self.log.info(f'{self.METRICS_FILE} was updated')
 
-		if not self.params.get('elector_addr'):
-			elector_addr = self.ton.GetFullElectorAddr()
-			self.write_params_to_file('elector_addr', elector_addr)
+	def emergency_flags_init(self):
 
-		if not self.params.get('config_addr'):
-			config_addr = self.ton.GetFullConfigAddr()
-			self.write_params_to_file('config_addr', config_addr)
+		emergency_flags = copy.deepcopy(self.emergency_flags)
 
-	def init_config15(self):
+		if 'exit' not in self.emergency_flags:
+			self.emergency_flags['exit'] = dict()
 
-		config15 = self.ton.GetConfig15()
-		if not self.params.get('validators_elected_for'):
-			self.write_params_to_file('validators_elected_for', config15['validatorsElectedFor'])
+		if 'recovery' not in self.emergency_flags:
+			self.emergency_flags['recovery'] = dict()
 
-		if not self.params.get('elections_start_before'):
-			self.write_params_to_file('elections_start_before', config15['electionsStartBefore'])
+		if 'warning' not in self.emergency_flags:
+			self.emergency_flags['warning'] = dict()
 
-		if not self.params.get('elections_end_before'):
-			self.write_params_to_file('elections_end_before', config15['electionsEndBefore'])
+		if 'exit_flags' not in self.emergency_flags:
+			self.emergency_flags['exit_flags'] = dict()
 
-		if not self.params.get('stake_held_for'):
-			self.write_params_to_file('stake_held_for', config15['stakeHeldFor'])
+		if 'recovery_flags' not in self.emergency_flags:
+			self.emergency_flags['recovery_flags'] = dict()
+
+		if 'warning_flags' not in self.emergency_flags:
+			self.emergency_flags['warning_flags'] = dict()
+
+		if emergency_flags != self.emergency_flags:
+			self.save_json_to_file(self.emergency_flags, self.EMERGENCY_FLAGS_FILE)
 
 	def init_wallet_balance(self, init_balance):
 
-		if 'wallet_init_balance' not in self.params.keys():
+		if 'wallet_init_balance' not in self.metrics.keys():
 
 			if not init_balance:
 				validator_wallet = self.validator_wallet()
@@ -126,32 +211,35 @@ class Reporter(object):
 				available_validator_balance = self.available_validator_balance(validator_account)
 				init_balance = available_validator_balance
 
-			self.write_params_to_file('wallet_init_balance', init_balance)
+			self.write_metrics_to_file('wallet_init_balance', init_balance)
 
 	def init_start_work_time(self, start_work_time=None):
 
-		if 'start_work_time' not in self.params.keys():
+		if 'start_work_time' not in self.metrics.keys():
 			start_work_time = start_work_time or time.time()
-			self.write_params_to_file('start_work_time', start_work_time)
+			self.write_metrics_to_file('start_work_time', start_work_time)
 
 	def systemctl_status_validator(self):
 		return os.system('systemctl status validator')
 
-	def systemctl_status_validator_ok(self, systemctl_status_validator):
-		return int(systemctl_status_validator == 0)
+	def systemctl_status_validator_ok(self):
+		return int(self.systemctl_status_validator() == 0)
 
 	def restricted_wallet_exists(self):
 		return int(os.path.exists(self.WALLET_PK_PATH) and os.path.exists(self.WALLET_ADDR_PATH))
 
+	def restricted_addr_changed(self, wallet_addr):
+		return int(wallet_addr != self.const['restricted_wallet_addr'])
+
 	def validator_index(self):
-		return self.ton.GetValidatorIndex()
+		return self.mtc.GetValidatorIndex()
 
 	def validator_name_ok(self, wallet_id):
 		return int(socket.gethostname() == f'validator-{wallet_id}')
 
 	def get_sub_wallet_id(self, wallet):
-		res = self.ton.liteClient.Run(f'runmethod {wallet.addrB64} wallet_id')
-		res = self.ton.GetVarFromWorkerOutput(res, "result")
+		res = self.mtc.liteClient.Run(f'runmethod {wallet.addrB64} wallet_id')
+		res = self.mtc.GetVarFromWorkerOutput(res, "result")
 
 		if not res:
 			return -1
@@ -164,17 +252,17 @@ class Reporter(object):
 			return -1
 
 	def validator_wallet(self):
-		return self.ton.GetValidatorWallet()
+		return self.mtc.GetValidatorWallet()
 
 	def validator_account(self, validator_wallet):
-		return self.ton.GetAccount(validator_wallet.addrB64)
+		return self.mtc.GetAccount(validator_wallet.addrB64)
 
 	def available_validator_balance(self, validator_account):
 		return validator_account.balance
 
 	def balance_at_elector(self, adnl_addr):
 		# get stake from json db
-		entries = self.ton.GetElectionEntries()
+		entries = self.mtc.GetElectionEntries()
 
 		if adnl_addr in entries:
 			return entries[adnl_addr]['stake']
@@ -199,19 +287,19 @@ class Reporter(object):
 			return self.balance_at_elector(adnl_addr) + available_validator_balance
 
 	def get_local_stake(self):
-		return int(self.ton.GetSettings("stake"))
+		return int(self.mtc.GetSettings("stake") or 0)
 
 	def get_local_stake_percent(self):
-		return int(self.ton.GetSettings("stakePercent"))
+		return int(self.mtc.GetSettings("stakePercent") or 0)
 
 	def get_stats(self):
-		return self.ton.GetValidatorStatus()
+		return self.mtc.GetValidatorStatus()
 
 	def past_election_ids(self, mytoncore_db):
-		# cmd = f"runmethodfull {self.params.get('elector_addr')} past_election_ids"
+		# cmd = f"runmethodfull {self.metrics.get('elector_addr')} past_election_ids"
 		#
-		# result = self.ton.liteClient.Run(cmd)
-		# activeElectionId = self.ton.GetVarFromWorkerOutput(result, "result")
+		# result = self.mtc.liteClient.Run(cmd)
+		# activeElectionId = self.mtc.GetVarFromWorkerOutput(result, "result")
 		# return sorted([int(s) for s in activeElectionId.replace('(', '').replace(')', '').split() if s.isdigit()], reverse=True)
 		return sorted(mytoncore_db['saveElections'].keys(), reverse=True)
 
@@ -226,14 +314,14 @@ class Reporter(object):
 			return self.participates_in_election_id(mytoncore_db, str(past_election_ids[1]), adnl_addr)
 
 	def active_election_id(self):
-		return self.ton.GetActiveElectionId(self.params.get('elector_addr'))
+		return self.mtc.GetActiveElectionId(self.const['elector_addr'])
 
-	def elections_ends_in(self, active_election_id):
+	def elections_ends_in(self, past_election_ids):
 
-		if not active_election_id:
-			return 0
+		if float(past_election_ids[0]) < time.time():
+			return -1
 
-		return active_election_id - self.params['elections_end_before']
+		return max(int((int(past_election_ids[0]) - int(self.const['elections_end_before']) - time.time()) / 60), 0)
 
 	def validation_ends_in(self, past_election_ids):
 
@@ -241,7 +329,15 @@ class Reporter(object):
 			return int((int(past_election_ids[0]) - time.time()) / 60)
 
 		else:
-			return int((int(past_election_ids[1]) + int(self.params['validators_elected_for']) - time.time()) / 60)
+			return int((int(past_election_ids[0]) + int(self.const['validators_elected_for']) - time.time()) / 60)
+
+	def validations_started_at(self, past_election_ids):
+
+		if float(past_election_ids[0]) > time.time():
+			assert float(past_election_ids[1]) < time.time(), f'election_id {past_election_ids[1]} is expected to less than current time {time.time()}'
+			return past_election_ids[1]
+		else:
+			return past_election_ids[0]
 
 	def get_mytoncore_db(self):
 
@@ -264,33 +360,33 @@ class Reporter(object):
 
 	def roi(self, total_balance):
 
-		if not self.params['wallet_init_balance']:
+		if not self.metrics['wallet_init_balance']:
 			return 0
 
-		return 100 * (total_balance / self.params['wallet_init_balance'] - 1)
+		return 100 * (total_balance / self.metrics['wallet_init_balance'] - 1)
 
 	def apy(self, roi):
 
 		if not roi:
 			return 0
 
-		return roi * self.SECONDS_IN_YEAR / (time.time() - self.params['start_work_time'])
+		return round(roi * self.SECONDS_IN_YEAR / (time.time() - self.metrics['start_work_time']), 2)
 
 	def calc_last_cycle_apr(self, total_balance):
 
-		if not self.total_balance:
-			self.total_balance = total_balance
-			self.write_params_to_file('total_balance', self.total_balance)
+		if not self.last_saved_total_balance:
+			self.last_saved_total_balance = total_balance
+			self.write_metrics_to_file('last_saved_total_balance', self.last_saved_total_balance)
 			return None
 
-		if total_balance != self.total_balance:
-			validation_cycle_in_seconds = self.params['validators_elected_for']
+		if total_balance != self.last_saved_total_balance:
+			validation_cycle_in_seconds = self.const['validators_elected_for']
 
-			roi = 100 * (total_balance / self.total_balance - 1)
-			self.total_balance = total_balance
-			self.last_cycle_apr = roi * self.SECONDS_IN_YEAR / validation_cycle_in_seconds
-			self.write_params_to_file('total_balance', self.total_balance)
-			self.write_params_to_file('last_cycle_apr', self.last_cycle_apr)
+			roi = 100 * (total_balance / self.last_saved_total_balance - 1)
+			self.last_saved_total_balance = total_balance
+			self.last_cycle_apr = round(roi * self.SECONDS_IN_YEAR / validation_cycle_in_seconds / 2, 2)
+			self.write_metrics_to_file('total_balance', self.last_saved_total_balance)
+			self.write_metrics_to_file('last_cycle_apr', self.last_cycle_apr)
 
 		return self.last_cycle_apr
 
@@ -305,7 +401,8 @@ class Reporter(object):
 			self.log.error(f'unexpected time diff between end_time = {end_time} and start_time = {start_time}')
 			start_time = end_time - 3 * 3600  # last 3 hours
 
-		validators_load = self.ton.GetValidatorsLoad(start_time, end_time)
+		validators_load = self.get_validators_load(start_time, end_time)
+
 		if validator_id not in validators_load.keys():
 			return -1
 
@@ -335,7 +432,7 @@ class Reporter(object):
 		complaints_hash = []
 		last_reported_election = sorted(mytoncore_db['saveComplaints'].keys(), reverse=True)[0]
 		for complaint_hash, complaints_values in mytoncore_db['saveComplaints'][last_reported_election].items():
-			if complaints_values['suggestedFine'] != 101.0 or complaints_values['suggestedFinePart'] != 0.0:
+			if complaints_values['suggestedFine'] != self.const['suggested_fine'] or complaints_values['suggestedFinePart'] != self.const['suggested_fine_part']:
 				complaints_hash.append(complaint_hash)
 
 		return complaints_hash or 0
@@ -354,63 +451,38 @@ class Reporter(object):
 
 	def elector_addr_changed(self):
 
-		elector_addr = self.ton.GetFullElectorAddr()
+		elector_addr = self.mtc.GetFullElectorAddr()
 
-		if elector_addr != self.params.get('elector_addr'):
+		if elector_addr != self.const['elector_addr']:
 			return 1
 
 		return 0
 
 	def config_addr_changed(self):
 
-		config_addr = self.ton.GetFullConfigAddr()
+		config_addr = self.mtc.GetFullConfigAddr()
 
-		if config_addr != self.params.get('config_addr'):
+		if config_addr != self.const['config_addr']:
 			return 1
 
 		return 0
 
 	def elector_code_changed(self):
 
-		if not self.params.get('elector_addr'):
-			return 0
-
-		elector_account = self.ton.GetAccount(self.params.get('elector_addr'))
+		elector_account = self.mtc.GetAccount(self.const['elector_addr'])
 		assert elector_account, 'failed to get elector account'
 
-		if not self.params.get('elector_code_hash'):
-			self.write_params_to_file('elector_code_hash', elector_account.codeHash)
-			return 0
-
-		if elector_account.codeHash != self.params.get('elector_code_hash'):
+		if elector_account.codeHash != self.const['elector_code_hash']:
 			return 1
 
 		return 0
 
 	def config_code_changed(self):
 
-		if not self.params.get('config_addr'):
-			return 0
-
-		config_account = self.ton.GetAccount(self.params.get('config_addr'))
+		config_account = self.mtc.GetAccount(self.const['config_addr'])
 		assert config_account, 'failed to get config account'
 
-		if not self.params.get('config_code_hash'):
-			self.write_params_to_file('config_code_hash', config_account.codeHash)
-			return 0
-
-		if config_account.codeHash != self.params.get('config_code_hash'):
-			return 1
-
-		return 0
-
-	def restricted_addr_changed(self, validator_wallet):
-
-		if not self.params.get('restricted_addr'):
-			self.write_params_to_file('restricted_addr', validator_wallet.addrB64)
-			return 0
-
-		if validator_wallet.addrB64 != self.params.get('restricted_addr'):
+		if config_account.codeHash != self.const['config_code_hash']:
 			return 1
 
 		return 0
@@ -419,11 +491,7 @@ class Reporter(object):
 
 		assert validator_account, 'validator account is not set yet'
 
-		if not self.params.get('restricted_code_hash'):
-			self.write_params_to_file('restricted_code_hash', validator_account.codeHash)
-			return 0
-
-		if validator_account.codeHash != self.params.get('restricted_code_hash'):
+		if validator_account.codeHash != self.const['restricted_code_hash']:
 			return 1
 
 		return 0
@@ -439,11 +507,15 @@ class Reporter(object):
 
 	def total_stake_reduced(self, total_stake):
 
-		if not self.params.get('prev_total_stake'):
-			self.write_params_to_file('prev_total_stake', total_stake)
+		if not self.metrics.get('prev_total_stake'):
+			self.write_metrics_to_file('prev_total_stake', total_stake)
 			return 0
 
-		return int(total_stake / self.params.get('prev_total_stake') < 0.8)
+		if total_stake > self.metrics.get('prev_total_stake'):
+			self.write_metrics_to_file('prev_total_stake', total_stake)
+			return 0
+
+		return int(total_stake / self.metrics.get('prev_total_stake') < 0.8)
 
 	def get_num_stakers(self, mytoncore_db):
 
@@ -452,29 +524,41 @@ class Reporter(object):
 
 	def num_stakers_reduced(self, num_stakers):
 
-		if not self.params.get('prev_num_stakers'):
-			self.write_params_to_file('prev_num_stakers', num_stakers)
+		if not self.metrics.get('prev_num_stakers'):
+			self.write_metrics_to_file('prev_num_stakers', num_stakers)
 			return 0
 
-		return int(num_stakers / self.params.get('prev_num_stakers') < 0.8)
+		if num_stakers > self.metrics.get('prev_num_stakers'):
+			self.write_metrics_to_file('prev_num_stakers', num_stakers)
+			return 0
+
+		return int(num_stakers / self.metrics.get('prev_num_stakers') < 0.8)
 
 	def new_offers(self):
 
-		offers = self.ton.GetOffers()
+		offers = self.mtc.GetOffers()
 
-		if self.params.get('offers') is None:
-			self.write_params_to_file('offers', offers)
+		if self.metrics.get('offers') is None:
+			self.write_metrics_to_file('offers', offers)
 			return 0
 
-		if offers != self.params.get('offers'):
-			self.log.info(f'new offers: {offers}, old offers: {self.params.get("offers")} (diff: {list(set(offers) - set(self.params.get("offers")))})')
+		if offers != self.metrics.get('offers'):
+			self.log.info(f'new offers: {offers}, old offers: {self.metrics.get("offers")} (diff: {list(set(offers) - set(self.metrics.get("offers")))})')
 			return 1
 
 		return 0
 
+	def detect_comlaint(self, mytoncore_db, past_election_ids, adnl_addr):
+
+		election_id = past_election_ids[0] if float(past_election_ids[0]) < time.time() else past_election_ids[1]
+		if 'saveComplaints' not in mytoncore_db or election_id not in mytoncore_db['saveComplaints']:
+			return -1
+
+		return int(adnl_addr in mytoncore_db['saveComplaints'][election_id].keys())
+
 	def get_global_version(self):
 
-		config8 = self.ton.GetConfig(8)
+		config8 = self.mtc.GetConfig(8)
 		try:
 			version = config8['_']['version']
 			capabilities = config8['_']['capabilities']
@@ -486,23 +570,18 @@ class Reporter(object):
 
 	def global_version_changed(self, version, capabilities):
 
-		if not self.params.get('version') or not self.params.get('capabilities'):
-			self.write_params_to_file('version', version)
-			self.write_params_to_file('capabilities', capabilities)
-			return 0
-
-		if version != self.params.get('version') or capabilities != self.params.get('capabilities'):
+		if version != self.const['version'] or capabilities != self.const['capabilities']:
 			return 1
 
 		return 0
 
 	def reporter_pid_changed(self, pid):
 
-		if not self.params.get('reporter_pid'):
-			self.write_params_to_file('reporter_pid', pid)
+		if not self.metrics.get('reporter_pid'):
+			self.write_metrics_to_file('reporter_pid', pid)
 			return 0
 
-		if pid != self.params.get('reporter_pid'):
+		if pid != self.metrics.get('reporter_pid'):
 			return 1
 
 		return 0
@@ -510,10 +589,14 @@ class Reporter(object):
 	def get_pid(self):
 		return os.getpid()
 
+	def compounding(self, total_balance):
+
+		self.mtc.SetSettings("stake", total_balance)
+
 	def exit_next_elections(self):
 
-		self.ton.SetSettings("stake", 0)
-		self.ton.SetSettings("stakePercent", 0)
+		self.mtc.SetSettings("stake", None)
+		self.mtc.SetSettings("stakePercent", 0)
 
 		stake = self.get_local_stake()
 		stake_pct = self.get_local_stake_percent()
@@ -523,137 +606,51 @@ class Reporter(object):
 		else:
 			self.log.info(f'Successfully set stake and stake_percent to 0')
 
-	def recovery_and_alert(self, res):
+	def recovery_and_alert(self, emergency_flags):
 
-		res['exit'] = 0
-		res['exit_message'] = ''
-		res['recovery'] = 0
-		res['recovery_message'] = ''
-		res['warning'] = 0
-		res['warning_message'] = ''
-
-		#################################
-		# Exit + Recovery
-		#################################
-		if res['min_prob'] < .05:
-			res['exit'] = 1
-			res['recovery'] = 1
-			res['exit_message'] += f'min_prob = {res["min_prob"]}; '
-			res['recovery_message'] += f'min_prob = {res["min_prob"]}; '
+		emergency_flags_on_disk = copy.deepcopy(self.emergency_flags)
 
 		#################################
 		# Exit Only
 		#################################
-		if res['fine_changed'] != 0:
-			res['exit'] = 1
-			res['exit_message'] += f'fine_changed = {res["fine_changed"]}; '
+		for key, value in emergency_flags['exit_flags'].items():
 
-		if res['elector_addr_changed'] != 0:
-			res['exit'] = 1
-			res['exit_message'] += f'elector_addr_changed = {res["elector_addr_changed"]}; '
+			if value != 0:
+				self.emergency_flags['exit_flags'][key] = 1
 
-		if res['config_addr_changed'] != 0:
-			res['exit'] = 1
-			res['exit_message'] += f'config_addr_changed = {res["config_addr_changed"]}; '
+		#################################
+		# Warning Only
+		#################################
+		for key, value in emergency_flags['warning_flags'].items():
 
-		if res['elector_code_changed'] != 0:
-			res['exit'] = 1
-			res['exit_message'] += f'elector_code_changed = {res["elector_code_changed"]}; '
-
-		if res['config_code_changed'] != 0:
-			res['exit'] = 1
-			res['exit_message'] += f'config_code_changed = {res["config_code_changed"]}; '
-
-		if res['restricted_addr_changed'] != 0:
-			res['exit'] = 1
-			res['exit_message'] += f'restricted_addr_changed = {res["restricted_addr_changed"]}; '
-
-		if res['restricted_code_changed'] != 0:
-			res['exit'] = 1
-			res['exit_message'] += f'restricted_code_changed = {res["restricted_code_changed"]}; '
-
-		if res['total_stake_reduced'] != 0:
-			res['exit'] = 1
-			res['exit_message'] += f'total_stake_reduced = {res["total_stake_reduced"]}; '
-
-		if res['num_stakers_reduced'] != 0:
-			res['exit'] = 1
-			res['exit_message'] += f'num_stakers_reduced = {res["num_stakers_reduced"]}; '
-
-		if res['new_offer'] != 0:
-			res['exit'] = 1
-			res['exit_message'] += f'new_offer = {res["new_offer"]}; '
-
-		if res['sub_wallet_id'] != 0:
-			res['exit'] = 1
-			res['exit_message'] += f'sub_wallet_id = {res["sub_wallet_id"]}; '
-
-		if res['global_version_changed'] != 0:
-			res['exit'] = 1
-			res['exit_message'] += f'global_version_changed = {res["global_version_changed"]}; '
-		#
-		if res['validators_elected_for_changed'] != 0:
-			res['exit'] = 1
-			res['exit_message'] += f'validators_elected_for_changed = {res["validators_elected_for_changed"]}; '
-
-		if res['elections_start_before_changed'] != 0:
-			res['exit'] = 1
-			res['exit_message'] += f'elections_start_before_changed = {res["elections_start_before_changed"]}; '
-
-		if res['elections_end_before_changed'] != 0:
-			res['exit'] = 1
-			res['exit_message'] += f'elections_end_before_changed = {res["elections_end_before_changed"]}; '
-
-		if res['stake_held_for_changed'] != 0:
-			res['exit'] = 1
-			res['exit_message'] += f'stake_held_for_changed = {res["stake_held_for_changed"]}; '
-
-		if res['reporter_pid_changed'] != 0:
-			res['warning'] = 1
-			res['warning_message'] += f'reporter_pid_changed = {res["reporter_pid_changed"]}; '
+			if value != 0:
+				self.emergency_flags['warning_flags'][key] = 1
 
 		#################################
 		# Recovery Only
 		#################################
-		if res['systemctl_status_validator_ok'] != 1:
-			res['recovery'] = 1
-			res['recovery_message'] += f'systemctl_status_validator_ok = {res["systemctl_status_validator_ok"]}; '
+		for key, value in emergency_flags['recovery_flags'].items():
 
-		if res['out_of_sync'] > 50:
-			res['recovery'] = 1
-			res['recovery_message'] += f'out_of_sync = {res["out_of_sync"]}; '
+			if value != 0:
+				self.emergency_flags['recovery_flags'][key] = 1
 
-		if res['mem_load_avg'] > 85:
-			res['recovery'] = 1
-			res['recovery_message'] += f'mem_load_avg = {res["mem_load_avg"]}; '
+		self.emergency_flags['exit'] = int(len(self.emergency_flags['exit_flags'].keys()) != 0)
+		self.emergency_flags['recovery'] = int(len(self.emergency_flags['recovery_flags'].keys()) != 0)
+		self.emergency_flags['warning'] = int(len(self.emergency_flags['warning_flags'].keys()) != 0)
 
-		if res['disk_load_pct_avg'] > 85:
-			res['recovery'] = 1
-			res['recovery_message'] += f'disk_load_pct_avg = {res["disk_load_pct_avg"]}; '
+		if emergency_flags_on_disk != self.emergency_flags:
+			self.save_json_to_file(self.emergency_flags, self.EMERGENCY_FLAGS_FILE)
 
-		if res['net_load_avg'] > 400:
-			res['recovery'] = 1
-			res['recovery_message'] += f'net_load_avg = {res["net_load_avg"]}; '
-
-		#################################
-		# Set Exit and Recovery message
-		#################################
-		if res['exit_message'] != '':
-			res['exit_message'] = '[EXIT ALERT] ' + res['exit_message']
+		if self.emergency_flags['exit']:
 			self.exit_next_elections()
 
-		if res['recovery_message'] != '':
-			res['recovery_message'] = '[RECOVERY ALERT] ' + res['recovery_message']
+	def report(self):
 
-		if res['warning_message'] != '':
-			res['warning_message'] = '[WARNING ALERT] ' + res['warning_message']
-
-	def report(self, res):
-		with open(self.REPORTER_FILE, 'w') as f:
-			json.dump(res, f)
+		with open(self.METRICS_FILE, 'w') as f:
+			json.dump(self.metrics, f)
+			self.log.info(f'{self.METRICS_FILE} was updated')
 
 	def run(self):
-		res = {}
 		retry = 0
 
 		while True:
@@ -663,98 +660,96 @@ class Reporter(object):
 
 			try:
 				self.log.info(f'validator reporter started at {datetime.utcnow()} (retry {retry})')
+
 				mytoncore_db = self.get_mytoncore_db()
-				self.params = self.load_params_from_file()
+				self.emergency_flags = self.load_json_from_file(self.EMERGENCY_FLAGS_FILE)
 
-				systemctl_status_validator = self.systemctl_status_validator()
-				res['systemctl_status_validator'] = systemctl_status_validator
-				res['systemctl_status_validator_ok'] = self.systemctl_status_validator_ok(systemctl_status_validator)
-				res['restricted_wallet_exists'] = self.restricted_wallet_exists()
 				validator_index = self.validator_index()
-				res['validator_index'] = validator_index
-
 				validator_wallet = self.validator_wallet()
 				validator_account = self.validator_account(validator_wallet)
-
-				adnl_addr = self.ton.GetAdnlAddr()
-				res['adnl_addr'] = adnl_addr
-
+				adnl_addr = self.mtc.GetAdnlAddr()
 				available_validator_balance = self.available_validator_balance(validator_account)
-				res['available_validator_balance'] = available_validator_balance
-
-				res['local_stake'] = self.get_local_stake()
-				res['local_stake_percent'] = self.get_local_stake_percent()
-
 				stats = self.get_stats()
-				res['out_of_sync'] = stats['outOfSync']
-				res['is_working'] = int(stats['isWorking'])
-
-				config15 = self.ton.GetConfig15()
-				res['validators_elected_for_changed'] = int(config15['validatorsElectedFor'] != self.params['validators_elected_for'])
-				res['elections_start_before_changed'] = int(config15['electionsStartBefore'] != self.params['elections_start_before'])
-				res['elections_end_before_changed'] = int(config15['electionsEndBefore'] != self.params['elections_end_before'])
-				res['stake_held_for_changed'] = int(config15['stakeHeldFor'] != self.params['stake_held_for'])
-
+				config15 = self.mtc.GetConfig15()
 				past_election_ids = self.past_election_ids(mytoncore_db)
-				res['participate_in_next_validation'] = self.participate_in_next_validation(mytoncore_db, past_election_ids, adnl_addr)
-				res['participate_in_curr_validation'] = self.participate_in_curr_validation(mytoncore_db, past_election_ids, adnl_addr)
-				res['active_election_id'] = self.active_election_id()
-				res['elections_ends_in'] = self.elections_ends_in(res['active_election_id'])
-				res['validations_ends_in'] = self.validation_ends_in(past_election_ids)
-
-				res['total_validator_balance'] = self.estimate_total_validator_balance(mytoncore_db, past_election_ids, adnl_addr, available_validator_balance)
-
-				res['roi'] = self.roi(res['total_validator_balance'])
-				res['apy'] = self.apy(res['roi'])
-				res['last_cycle_apr'] = self.calc_last_cycle_apr(res['total_validator_balance'])
-				res['validator_load'] = self.get_validator_load(validator_index, str(max(past_election_ids)))
-				res['min_prob'] = self.min_prob(res['validator_load'])
-				res['fine_changed'] = self.check_fine_changes(mytoncore_db)
-				res['net_load_avg'], res['disk_load_pct_avg'], res['mem_load_avg'] = self.get_load_stats(mytoncore_db)
-
-				res['elector_addr_changed'] = self.elector_addr_changed()
-				res['config_addr_changed'] = self.config_addr_changed()
-
-				res['elector_code_changed'] = self.elector_code_changed()
-				res['config_code_changed'] = self.config_code_changed()
-
-				res['restricted_addr_changed'] = self.restricted_addr_changed(validator_wallet)
-				res['restricted_code_changed'] = self.restricted_code_changed(validator_account)
-
 				total_stake = self.get_total_stake(mytoncore_db)
-
-				res['total_stake'] = total_stake
-
-				res['new_offer'] = self.new_offers()
-
-				res['total_stake_reduced'] = self.total_stake_reduced(total_stake)
-
 				num_stakers = self.get_num_stakers(mytoncore_db)
-				res['num_stakers'] = num_stakers
-				res['num_stakers_reduced'] = self.num_stakers_reduced(num_stakers)
-
-				res['sub_wallet_id'] = self.get_sub_wallet_id(validator_wallet)
-
-				res['version'], res['capabilities'] = self.get_global_version()
-				res['global_version_changed'] = self.global_version_changed(res['version'], res['capabilities'])
-
 				pid = self.get_pid()
-				res['reporter_pid'] = pid
+				version, capabilities = self.get_global_version()
 
-				res['reporter_pid_changed'] = self.reporter_pid_changed(res['reporter_pid'])
+				emergency_flags = {'exit_flags': dict(), 'recovery_flags': dict(), 'warning_flags': dict()}
 
-				self.recovery_and_alert(res)
+				# exit & recovery flags
+				emergency_flags['exit_flags']['min_prob'] = self.metrics['min_prob'] < .05
+				emergency_flags['recovery_flags']['min_prob'] = self.metrics['min_prob'] < .05
 
-				res['update_time'] = time.time()
-				self.report(res)
-				self.log.info(res)
+				# exit flags
+				emergency_flags['exit_flags']['restricted_wallet_not_exists'] = int(self.restricted_wallet_exists() != 1)
+				emergency_flags['exit_flags']['validators_elected_for_changed'] = int(config15['validatorsElectedFor'] != self.const['validators_elected_for'])
+				emergency_flags['exit_flags']['elections_start_before_changed'] = int(config15['electionsStartBefore'] != self.const['elections_start_before'])
+				emergency_flags['exit_flags']['elections_end_before_changed'] = int(config15['electionsEndBefore'] != self.const['elections_end_before'])
+				emergency_flags['exit_flags']['stake_held_for_changed'] = int(config15['stakeHeldFor'] != self.const['stake_held_for'])
+				emergency_flags['exit_flags']['fine_changed'] = self.check_fine_changes(mytoncore_db)
+				emergency_flags['exit_flags']['elector_addr_changed'] = self.elector_addr_changed()
+				emergency_flags['exit_flags']['config_addr_changed'] = self.config_addr_changed()
+				emergency_flags['exit_flags']['elector_code_changed'] = self.elector_code_changed()
+				emergency_flags['exit_flags']['config_code_changed'] = self.config_code_changed()
+				emergency_flags['exit_flags']['restricted_addr_changed'] = self.restricted_addr_changed(validator_wallet)
+				emergency_flags['exit_flags']['restricted_code_changed'] = self.restricted_code_changed(validator_account)
+				emergency_flags['exit_flags']['total_stake_reduced'] = self.total_stake_reduced(total_stake)
+				emergency_flags['exit_flags']['num_stakers_reduced'] = self.num_stakers_reduced(num_stakers)
+				emergency_flags['exit_flags']['global_version_changed'] = self.global_version_changed(version, capabilities)
+				emergency_flags['exit_flags']['complaint_detected'] = int(self.detect_comlaint(mytoncore_db, past_election_ids, adnl_addr) == 1)
+				emergency_flags['exit_flags']['restricted_addr_changed'] = self.restricted_addr_changed(validator_wallet.addrB64)
+				emergency_flags['exit_flags']['reporter_pid_changed'] = self.reporter_pid_changed(self.metrics['reporter_pid'])
+				emergency_flags['exit_flags']['sub_wallet_id_ok'] = int(self.metrics['sub_wallet_id'] != 0)
+				emergency_flags['exit_flags']['new_offers'] = self.new_offers()
 
-				# TODO: last cycle apr, exit + recovery flag in case retry=3
+				# recovery flags
+				emergency_flags['recovery_flags']['systemctl_status_validator'] = int(self.systemctl_status_validator_ok() != 1)
+				emergency_flags['recovery_flags']['out_of_sync_ok'] = int(self.metrics['out_of_sync'] > 50)
+				emergency_flags['recovery_flags']['mem_load_avg_ok'] = int(self.metrics['mem_load_avg'] > 85)
+				emergency_flags['recovery_flags']['disk_load_pct_avg'] = int(self.metrics['mem_load_avg'] > 85)
+				emergency_flags['recovery_flags']['net_load_avg'] = int(self.metrics['mem_load_avg'] > 400)
+
+				self.recovery_and_alert(emergency_flags)
+
+				self.metrics['validator_index'] = validator_index
+				self.metrics['adnl_addr'] = adnl_addr
+				self.metrics['available_validator_balance'] = available_validator_balance
+				self.metrics['local_stake'] = self.get_local_stake()
+				self.metrics['local_stake_percent'] = self.get_local_stake_percent()
+				self.metrics['out_of_sync'] = stats['outOfSync']
+				self.metrics['is_working'] = int(stats['isWorking'])
+				self.metrics['participate_in_next_validation'] = self.participate_in_next_validation(mytoncore_db, past_election_ids, adnl_addr)
+				self.metrics['participate_in_curr_validation'] = self.participate_in_curr_validation(mytoncore_db, past_election_ids, adnl_addr)
+				self.metrics['active_election_id'] = self.active_election_id()
+				self.metrics['elections_ends_in'] = self.elections_ends_in(past_election_ids)
+				self.metrics['validations_ends_in'] = self.validation_ends_in(past_election_ids)
+				self.metrics['validations_started_at'] = self.validations_started_at(past_election_ids)
+				self.metrics['total_validator_balance'] = self.estimate_total_validator_balance(mytoncore_db, past_election_ids, adnl_addr, available_validator_balance)
+				self.metrics['roi'] = self.roi(self.metrics['total_validator_balance'])
+				self.metrics['apy'] = self.apy(self.metrics['roi'])
+				self.metrics['last_cycle_apr'] = self.calc_last_cycle_apr(self.metrics['total_validator_balance'])
+				self.metrics['validator_load'] = self.get_validator_load(validator_index, str(self.metrics['validations_started_at']))
+				self.metrics['min_prob'] = self.min_prob(self.metrics['validator_load'])
+				self.metrics['net_load_avg'], self.metrics['disk_load_pct_avg'], self.metrics['mem_load_avg'] = self.get_load_stats(mytoncore_db)
+				self.metrics['total_stake'] = total_stake
+				self.metrics['sub_wallet_id'] = self.get_sub_wallet_id(validator_wallet)
+				self.metrics['version'], self.metrics['capabilities'] = version, capabilities
+				self.metrics['num_stakers'] = num_stakers
+				self.metrics['reporter_pid'] = pid
+				self.metrics['restricted_wallet_addr'] = validator_wallet.addrB64
+				self.metrics['update_time'] = time.time()
+
+				self.report()
+
+				self.log.info(self.metrics)
 
 			except Exception as e:
 				retry += 1
 				success = False
-				self.log.info(res)
+				self.log.info(self.metrics)
 				self.log.info(f'unexpected error: {e}')
 				self.log.info(traceback.format_exc())
 
