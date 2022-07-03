@@ -160,6 +160,8 @@ class Reporter(MTC):
 			with open(file_name, 'r') as f:
 				return json.load(f)
 
+		return {}
+
 	def save_json_to_file(self, json_dict, file_name):
 
 		with open(file_name, 'w') as f:
@@ -180,13 +182,13 @@ class Reporter(MTC):
 		emergency_flags = copy.deepcopy(self.emergency_flags)
 
 		if 'exit' not in self.emergency_flags:
-			self.emergency_flags['exit'] = dict()
+			self.emergency_flags['exit'] = 0
 
 		if 'recovery' not in self.emergency_flags:
-			self.emergency_flags['recovery'] = dict()
+			self.emergency_flags['recovery'] = 0
 
 		if 'warning' not in self.emergency_flags:
-			self.emergency_flags['warning'] = dict()
+			self.emergency_flags['warning'] = 0
 
 		if 'exit_flags' not in self.emergency_flags:
 			self.emergency_flags['exit_flags'] = dict()
@@ -595,7 +597,7 @@ class Reporter(MTC):
 		else:
 			self.log.info(f'Successfully set stake and stake_percent to 0')
 
-	def recovery_and_alert(self, emergency_flags):
+	def emergency_update(self, emergency_flags):
 
 		emergency_flags_on_disk = copy.deepcopy(self.emergency_flags)
 
@@ -736,7 +738,7 @@ class Reporter(MTC):
 				emergency_flags['recovery_flags']['disk_load_pct_avg'] = int(self.metrics['mem_load_avg'] > 85)
 				emergency_flags['recovery_flags']['net_load_avg'] = int(self.metrics['mem_load_avg'] > 400)
 
-				self.recovery_and_alert(emergency_flags)
+				self.emergency_update(emergency_flags)
 
 				self.report()
 

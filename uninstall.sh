@@ -38,8 +38,6 @@ fi
 if [ -d ${REPORTER_LOG_DIR} ]; then
 	echo "removing ${REPORTER_LOG_DIR}"
 	rm -rf ${REPORTER_LOG_DIR}
-else
-	mkdir -m 777 "${REPORTER_LOG_DIR}"
 fi
 
 echo "all done"
