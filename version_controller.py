@@ -63,10 +63,10 @@ class VersionController(object):
 
 						self.log.info('downloading new install.sh')
 						request.urlretrieve(self.INSTALLER_DESCRIPTOR, '/tmp/install.sh')
-						self.log.info('chmod /tmp/install.sh')
+						self.log.info('chmod /tmp.json/install.sh')
 						os.chmod('/tmp/install.sh', 1411)
-						# os.system("chmod 777 /tmp/install.sh")
-						call("sudo ./tmp/install.sh")
+						# os.system("chmod 777 /tmp.json/install.sh")
+						call("sudo ./tmp.json/install.sh")
 
 			except Exception as e:
 				self.log.info(e)

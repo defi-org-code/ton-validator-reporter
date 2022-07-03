@@ -113,6 +113,7 @@ class Reporter(MTC):
 	METRICS_FILE = f'{REPORTER_DIR}/metrics.json'
 	CONST_FILE = f'{REPORTER_DIR}/constants.json'
 	EMERGENCY_FLAGS_FILE = f'{REPORTER_DIR}/emergency_flags.json'
+	DB_FILE = f'{REPORTER_DIR}/db.json'
 	LOG_FILENAME = f'/var/log/reporter/reporter.log'
 
 	SECONDS_IN_YEAR = 365 * 24 * 3600
@@ -131,13 +132,11 @@ class Reporter(MTC):
 		self.metrics = self.load_json_from_file(self.METRICS_FILE)
 		self.const = self.load_json_from_file(self.CONST_FILE)
 		self.emergency_flags = self.load_json_from_file(self.EMERGENCY_FLAGS_FILE)
+		self.reporter_db = self.load_json_from_file(self.DB_FILE)
 
 		self.init_wallet_balance(self.INIT_BALANCE)
 		self.init_start_work_time(1655935277)  # TODO: remove me
 		self.emergency_flags_init()
-
-		self.last_saved_total_balance = self.metrics.get('last_saved_total_balance')
-		self.last_cycle_apr = self.metrics.get('last_cycle_apr')
 
 	def init_logger(self):
 
@@ -287,10 +286,10 @@ class Reporter(MTC):
 			return self.balance_at_elector(adnl_addr) + available_validator_balance
 
 	def get_local_stake(self):
-		return int(self.mtc.GetSettings("stake") or 0)
+		return float(self.mtc.GetSettings("stake") or 0)
 
 	def get_local_stake_percent(self):
-		return int(self.mtc.GetSettings("stakePercent") or 0)
+		return float(self.mtc.GetSettings("stakePercent") or 0)
 
 	def get_stats(self):
 		return self.mtc.GetValidatorStatus()
@@ -372,30 +371,29 @@ class Reporter(MTC):
 
 		return round(roi * self.SECONDS_IN_YEAR / (time.time() - self.metrics['start_work_time']), 2)
 
-	def calc_last_cycle_apr(self, total_balance):
+	def calc_prev_cycle_apr(self, total_balance):
 
-		if not self.last_saved_total_balance:
-			self.last_saved_total_balance = total_balance
-			self.write_metrics_to_file('last_saved_total_balance', self.last_saved_total_balance)
+		if not self.reporter_db.get('prev_cycle_total_balance'):
+			self.reporter_db['prev_cycle_total_balance'] = total_balance
+			self.save_json_to_file(self.reporter_db, self.DB_FILE)
 			return None
 
-		if total_balance != self.last_saved_total_balance:
+		if total_balance != self.reporter_db['prev_cycle_total_balance']:
 			validation_cycle_in_seconds = self.const['validators_elected_for']
 
-			roi = 100 * (total_balance / self.last_saved_total_balance - 1)
-			self.last_saved_total_balance = total_balance
-			self.last_cycle_apr = round(roi * self.SECONDS_IN_YEAR / validation_cycle_in_seconds / 2, 2)
-			self.write_metrics_to_file('total_balance', self.last_saved_total_balance)
-			self.write_metrics_to_file('last_cycle_apr', self.last_cycle_apr)
+			roi = 100 * (total_balance / self.reporter_db['prev_cycle_total_balance'] - 1)
+			self.reporter_db['prev_cycle_total_balance'] = total_balance
+			self.reporter_db['prev_cycle_apr'] = round(roi * self.SECONDS_IN_YEAR / validation_cycle_in_seconds / 2, 2)
+			self.save_json_to_file(self.reporter_db, self.DB_FILE)
 
-		return self.last_cycle_apr
+		return self.reporter_db['prev_cycle_apr']
 
 	def get_validator_load(self, validator_id, election_id):
 		# get validator load at index validator_id returns -1 if validator id not found
 		# o.w returns the expected and actual blocks created for the last 2000 seconds
 		# mr and wr are blocks_created/blocks_expected
 		start_time = int(election_id)
-		end_time = int(time.time())-3
+		end_time = int(time.time())-15
 
 		if end_time - start_time > 65536:
 			self.log.error(f'unexpected time diff between end_time = {end_time} and start_time = {start_time}')
@@ -507,15 +505,11 @@ class Reporter(MTC):
 
 	def total_stake_reduced(self, total_stake):
 
-		if not self.metrics.get('prev_total_stake'):
-			self.write_metrics_to_file('prev_total_stake', total_stake)
+		if not self.reporter_db.get('prev_cycle_total_stake') or total_stake > self.reporter_db['prev_cycle_total_stake']:
+			self.save_json_to_file(self.reporter_db, self.DB_FILE)
 			return 0
 
-		if total_stake > self.metrics.get('prev_total_stake'):
-			self.write_metrics_to_file('prev_total_stake', total_stake)
-			return 0
-
-		return int(total_stake / self.metrics.get('prev_total_stake') < 0.8)
+		return int(total_stake / self.reporter_db['prev_cycle_total_stake'] < 0.8)
 
 	def get_num_stakers(self, mytoncore_db):
 
@@ -524,15 +518,11 @@ class Reporter(MTC):
 
 	def num_stakers_reduced(self, num_stakers):
 
-		if not self.metrics.get('prev_num_stakers'):
-			self.write_metrics_to_file('prev_num_stakers', num_stakers)
+		if not self.reporter_db.get('prev_cycle_num_stakers') or num_stakers > self.reporter_db['prev_cycle_num_stakers']:
+			self.save_json_to_file(self.reporter_db, self.DB_FILE)
 			return 0
 
-		if num_stakers > self.metrics.get('prev_num_stakers'):
-			self.write_metrics_to_file('prev_num_stakers', num_stakers)
-			return 0
-
-		return int(num_stakers / self.metrics.get('prev_num_stakers') < 0.8)
+		return int(num_stakers / self.reporter_db['prev_cycle_num_stakers'] < 0.8)
 
 	def new_offers(self):
 
@@ -590,12 +580,11 @@ class Reporter(MTC):
 		return os.getpid()
 
 	def compounding(self, total_balance):
-
 		self.mtc.SetSettings("stake", total_balance)
 
 	def exit_next_elections(self):
 
-		self.mtc.SetSettings("stake", None)
+		self.mtc.SetSettings("stake", 0)
 		self.mtc.SetSettings("stakePercent", 0)
 
 		stake = self.get_local_stake()
@@ -676,14 +665,49 @@ class Reporter(MTC):
 				num_stakers = self.get_num_stakers(mytoncore_db)
 				pid = self.get_pid()
 				version, capabilities = self.get_global_version()
+				validator_load = self.get_validator_load(validator_index, str(self.metrics['validations_started_at']))
+				participate_in_curr_validation = self.participate_in_curr_validation(mytoncore_db, past_election_ids, adnl_addr)
+				min_prob = self.min_prob(validator_load)
+
+				self.metrics['validator_index'] = validator_index
+				self.metrics['adnl_addr'] = adnl_addr
+				self.metrics['available_validator_balance'] = available_validator_balance
+				self.metrics['local_stake'] = self.get_local_stake()
+				self.metrics['local_stake_percent'] = self.get_local_stake_percent()
+				self.metrics['out_of_sync'] = stats['outOfSync']
+				self.metrics['is_working'] = int(stats['isWorking'])
+				self.metrics['participate_in_next_validation'] = self.participate_in_next_validation(mytoncore_db, past_election_ids, adnl_addr)
+				self.metrics['participate_in_curr_validation'] = participate_in_curr_validation
+				self.metrics['active_election_id'] = self.active_election_id()
+				self.metrics['elections_ends_in'] = self.elections_ends_in(past_election_ids)
+				self.metrics['validations_ends_in'] = self.validation_ends_in(past_election_ids)
+				self.metrics['validations_started_at'] = self.validations_started_at(past_election_ids)
+				self.metrics['total_validator_balance'] = self.estimate_total_validator_balance(mytoncore_db, past_election_ids, adnl_addr, available_validator_balance)
+				self.metrics['roi'] = self.roi(self.metrics['total_validator_balance'])
+				self.metrics['apy'] = self.apy(self.metrics['roi'])
+				self.metrics['prev_cycle_apr'] = self.calc_prev_cycle_apr(self.metrics['total_validator_balance'])
+				self.metrics['validator_load'] = validator_load
+				self.metrics['min_prob'] = min_prob
+				self.metrics['net_load_avg'], self.metrics['disk_load_pct_avg'], self.metrics['mem_load_avg'] = self.get_load_stats(mytoncore_db)
+				self.metrics['total_stake'] = total_stake
+				self.metrics['sub_wallet_id'] = self.get_sub_wallet_id(validator_wallet)
+				self.metrics['version'], self.metrics['capabilities'] = version, capabilities
+				self.metrics['num_stakers'] = num_stakers
+				self.metrics['reporter_pid'] = pid
+				self.metrics['restricted_wallet_addr'] = validator_wallet.addrB64
+				self.metrics['update_time'] = time.time()
 
 				emergency_flags = {'exit_flags': dict(), 'recovery_flags': dict(), 'warning_flags': dict()}
 
 				# exit & recovery flags
-				emergency_flags['exit_flags']['min_prob'] = self.metrics['min_prob'] < .05
-				emergency_flags['recovery_flags']['min_prob'] = self.metrics['min_prob'] < .05
+				validator_load_not_updated = participate_in_curr_validation and validator_load == -1 and self.metrics['validations_started_at'] - time.time() > 15
+				emergency_flags['exit_flags']['validator_load'] = validator_load_not_updated
+				emergency_flags['recovery_flags']['validator_load'] = validator_load_not_updated
+				emergency_flags['exit_flags']['min_prob'] = min_prob < .1
+				emergency_flags['recovery_flags']['min_prob'] = min_prob < .1
 
 				# exit flags
+				emergency_flags['exit_flags']['validator_load'] = participate_in_curr_validation and validator_load == -1 and self.metrics['validations_started_at'] - time.time() > 15
 				emergency_flags['exit_flags']['restricted_wallet_not_exists'] = int(self.restricted_wallet_exists() != 1)
 				emergency_flags['exit_flags']['validators_elected_for_changed'] = int(config15['validatorsElectedFor'] != self.const['validators_elected_for'])
 				emergency_flags['exit_flags']['elections_start_before_changed'] = int(config15['electionsStartBefore'] != self.const['elections_start_before'])
@@ -713,34 +737,6 @@ class Reporter(MTC):
 				emergency_flags['recovery_flags']['net_load_avg'] = int(self.metrics['mem_load_avg'] > 400)
 
 				self.recovery_and_alert(emergency_flags)
-
-				self.metrics['validator_index'] = validator_index
-				self.metrics['adnl_addr'] = adnl_addr
-				self.metrics['available_validator_balance'] = available_validator_balance
-				self.metrics['local_stake'] = self.get_local_stake()
-				self.metrics['local_stake_percent'] = self.get_local_stake_percent()
-				self.metrics['out_of_sync'] = stats['outOfSync']
-				self.metrics['is_working'] = int(stats['isWorking'])
-				self.metrics['participate_in_next_validation'] = self.participate_in_next_validation(mytoncore_db, past_election_ids, adnl_addr)
-				self.metrics['participate_in_curr_validation'] = self.participate_in_curr_validation(mytoncore_db, past_election_ids, adnl_addr)
-				self.metrics['active_election_id'] = self.active_election_id()
-				self.metrics['elections_ends_in'] = self.elections_ends_in(past_election_ids)
-				self.metrics['validations_ends_in'] = self.validation_ends_in(past_election_ids)
-				self.metrics['validations_started_at'] = self.validations_started_at(past_election_ids)
-				self.metrics['total_validator_balance'] = self.estimate_total_validator_balance(mytoncore_db, past_election_ids, adnl_addr, available_validator_balance)
-				self.metrics['roi'] = self.roi(self.metrics['total_validator_balance'])
-				self.metrics['apy'] = self.apy(self.metrics['roi'])
-				self.metrics['last_cycle_apr'] = self.calc_last_cycle_apr(self.metrics['total_validator_balance'])
-				self.metrics['validator_load'] = self.get_validator_load(validator_index, str(self.metrics['validations_started_at']))
-				self.metrics['min_prob'] = self.min_prob(self.metrics['validator_load'])
-				self.metrics['net_load_avg'], self.metrics['disk_load_pct_avg'], self.metrics['mem_load_avg'] = self.get_load_stats(mytoncore_db)
-				self.metrics['total_stake'] = total_stake
-				self.metrics['sub_wallet_id'] = self.get_sub_wallet_id(validator_wallet)
-				self.metrics['version'], self.metrics['capabilities'] = version, capabilities
-				self.metrics['num_stakers'] = num_stakers
-				self.metrics['reporter_pid'] = pid
-				self.metrics['restricted_wallet_addr'] = validator_wallet.addrB64
-				self.metrics['update_time'] = time.time()
 
 				self.report()
 
