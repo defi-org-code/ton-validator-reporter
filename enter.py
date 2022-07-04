@@ -9,8 +9,8 @@ from mypylib.mypylib import *
 print('Reset and Enter script started')
 
 ton = mytonctrl.MyTonCore()
-stake = 0
-stake_percent = 99.99
+stake = 350000
+stake_percent = 0
 
 print(f'setting stake percent to {stake_percent}')
 ton.SetSettings("stake", stake)

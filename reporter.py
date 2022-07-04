@@ -121,8 +121,6 @@ class Reporter(MTC):
 
 	MIN_PROB_NULL = 100
 
-	INIT_BALANCE = 350000
-
 	def __init__(self):
 		super(Reporter, self).__init__()
 
@@ -134,8 +132,8 @@ class Reporter(MTC):
 		self.emergency_flags = self.load_json_from_file(self.EMERGENCY_FLAGS_FILE)
 		self.reporter_db = self.load_json_from_file(self.DB_FILE)
 
-		self.init_wallet_balance(self.INIT_BALANCE)
-		self.init_start_work_time(1655935277)  # TODO: remove me
+		self.init_wallet_balance()
+		self.init_start_work_time()
 		self.emergency_flags_init()
 
 	def init_logger(self):
@@ -202,9 +200,9 @@ class Reporter(MTC):
 		if emergency_flags != self.emergency_flags:
 			self.save_json_to_file(self.emergency_flags, self.EMERGENCY_FLAGS_FILE)
 
-	def init_wallet_balance(self, init_balance):
+	def init_wallet_balance(self, init_balance=None):
 
-		if 'wallet_init_balance' not in self.metrics.keys():
+		if 'wallet_init_balance' not in self.reporter_db.keys():
 
 			if not init_balance:
 				validator_wallet = self.validator_wallet()
@@ -212,13 +210,15 @@ class Reporter(MTC):
 				available_validator_balance = self.available_validator_balance(validator_account)
 				init_balance = available_validator_balance
 
-			self.write_metrics_to_file('wallet_init_balance', init_balance)
+			self.reporter_db['wallet_init_balance'] = init_balance
+			self.save_json_to_file(self.reporter_db, self.DB_FILE)
 
 	def init_start_work_time(self, start_work_time=None):
 
-		if 'start_work_time' not in self.metrics.keys():
+		if 'start_work_time' not in self.reporter_db.keys():
 			start_work_time = start_work_time or time.time()
-			self.write_metrics_to_file('start_work_time', start_work_time)
+			self.reporter_db['start_work_time'] = start_work_time
+			self.save_json_to_file(self.reporter_db, self.DB_FILE)
 
 	def systemctl_status_validator(self):
 		return os.system('systemctl status validator')
@@ -361,17 +361,17 @@ class Reporter(MTC):
 
 	def roi(self, total_balance):
 
-		if not self.metrics['wallet_init_balance']:
+		if not self.reporter_db['wallet_init_balance']:
 			return 0
 
-		return 100 * (total_balance / self.metrics['wallet_init_balance'] - 1)
+		return 100 * (total_balance / self.reporter_db['wallet_init_balance'] - 1)
 
 	def apy(self, roi):
 
 		if not roi:
 			return 0
 
-		return round(roi * self.SECONDS_IN_YEAR / (time.time() - self.metrics['start_work_time']), 2)
+		return round(roi * self.SECONDS_IN_YEAR / (time.time() - self.reporter_db['start_work_time']), 2)
 
 	def calc_prev_cycle_apr(self, total_balance):
 
@@ -379,6 +379,10 @@ class Reporter(MTC):
 			self.reporter_db['prev_cycle_total_balance'] = total_balance
 			self.save_json_to_file(self.reporter_db, self.DB_FILE)
 			return None
+
+		if not self.reporter_db.get('prev_cycle_apr'):
+			self.reporter_db['prev_cycle_apr'] = None
+			self.save_json_to_file(self.reporter_db, self.DB_FILE)
 
 		if total_balance != self.reporter_db['prev_cycle_total_balance']:
 			validation_cycle_in_seconds = self.const['validators_elected_for']
@@ -508,6 +512,7 @@ class Reporter(MTC):
 	def total_stake_reduced(self, total_stake):
 
 		if not self.reporter_db.get('prev_cycle_total_stake') or total_stake > self.reporter_db['prev_cycle_total_stake']:
+			self.reporter_db['prev_cycle_total_stake'] = total_stake
 			self.save_json_to_file(self.reporter_db, self.DB_FILE)
 			return 0
 
@@ -521,6 +526,7 @@ class Reporter(MTC):
 	def num_stakers_reduced(self, num_stakers):
 
 		if not self.reporter_db.get('prev_cycle_num_stakers') or num_stakers > self.reporter_db['prev_cycle_num_stakers']:
+			self.reporter_db['prev_cycle_num_stakers'] = num_stakers
 			self.save_json_to_file(self.reporter_db, self.DB_FILE)
 			return 0
 
@@ -667,7 +673,8 @@ class Reporter(MTC):
 				num_stakers = self.get_num_stakers(mytoncore_db)
 				pid = self.get_pid()
 				version, capabilities = self.get_global_version()
-				validator_load = self.get_validator_load(validator_index, str(self.metrics['validations_started_at']))
+				validations_started_at = self.validations_started_at(past_election_ids)
+				validator_load = self.get_validator_load(validator_index, str(validations_started_at))
 				participate_in_curr_validation = self.participate_in_curr_validation(mytoncore_db, past_election_ids, adnl_addr)
 				min_prob = self.min_prob(validator_load)
 
@@ -683,7 +690,7 @@ class Reporter(MTC):
 				self.metrics['active_election_id'] = self.active_election_id()
 				self.metrics['elections_ends_in'] = self.elections_ends_in(past_election_ids)
 				self.metrics['validations_ends_in'] = self.validation_ends_in(past_election_ids)
-				self.metrics['validations_started_at'] = self.validations_started_at(past_election_ids)
+				self.metrics['validations_started_at'] = validations_started_at
 				self.metrics['total_validator_balance'] = self.estimate_total_validator_balance(mytoncore_db, past_election_ids, adnl_addr, available_validator_balance)
 				self.metrics['roi'] = self.roi(self.metrics['total_validator_balance'])
 				self.metrics['apy'] = self.apy(self.metrics['roi'])
@@ -702,14 +709,14 @@ class Reporter(MTC):
 				emergency_flags = {'exit_flags': dict(), 'recovery_flags': dict(), 'warning_flags': dict()}
 
 				# exit & recovery flags
-				validator_load_not_updated = participate_in_curr_validation and validator_load == -1 and self.metrics['validations_started_at'] - time.time() > 15
+				validator_load_not_updated = participate_in_curr_validation and validator_load == -1 and float(validations_started_at) - time.time() > 15
 				emergency_flags['exit_flags']['validator_load'] = validator_load_not_updated
 				emergency_flags['recovery_flags']['validator_load'] = validator_load_not_updated
 				emergency_flags['exit_flags']['min_prob'] = min_prob < .1
 				emergency_flags['recovery_flags']['min_prob'] = min_prob < .1
 
 				# exit flags
-				emergency_flags['exit_flags']['validator_load'] = participate_in_curr_validation and validator_load == -1 and self.metrics['validations_started_at'] - time.time() > 15
+				emergency_flags['exit_flags']['validator_load'] = participate_in_curr_validation and validator_load == -1 and float(validations_started_at) - time.time() > 15
 				emergency_flags['exit_flags']['restricted_wallet_not_exists'] = int(self.restricted_wallet_exists() != 1)
 				emergency_flags['exit_flags']['validators_elected_for_changed'] = int(config15['validatorsElectedFor'] != self.const['validators_elected_for'])
 				emergency_flags['exit_flags']['elections_start_before_changed'] = int(config15['electionsStartBefore'] != self.const['elections_start_before'])
