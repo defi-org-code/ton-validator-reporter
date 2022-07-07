@@ -132,7 +132,6 @@ class Reporter(MTC):
 		self.emergency_flags = self.load_json_from_file(self.EMERGENCY_FLAGS_FILE)
 		self.reporter_db = self.load_json_from_file(self.DB_FILE)
 
-		self.init_wallet_balance()
 		self.init_start_work_time()
 		self.emergency_flags_init()
 
@@ -200,19 +199,6 @@ class Reporter(MTC):
 		if emergency_flags != self.emergency_flags:
 			self.save_json_to_file(self.emergency_flags, self.EMERGENCY_FLAGS_FILE)
 
-	def init_wallet_balance(self, init_balance=None):
-
-		if 'wallet_init_balance' not in self.reporter_db.keys():
-
-			if not init_balance:
-				validator_wallet = self.validator_wallet()
-				validator_account = self.validator_account(validator_wallet)
-				available_validator_balance = self.available_validator_balance(validator_account)
-				init_balance = available_validator_balance
-
-			self.reporter_db['wallet_init_balance'] = init_balance
-			self.save_json_to_file(self.reporter_db, self.DB_FILE)
-
 	def init_start_work_time(self, start_work_time=None):
 
 		if 'start_work_time' not in self.reporter_db.keys():
@@ -246,8 +232,7 @@ class Reporter(MTC):
 			return -1
 
 		try:
-			res = int((res.replace('[', '').replace(']', '').split())[0])
-			return res
+			return int((res.replace('[', '').replace(']', '').split())[0])
 		except Exception as e:
 			self.log.info(f'error: unable to extract wallet_id: {e}')
 			return -1
@@ -361,7 +346,8 @@ class Reporter(MTC):
 
 	def roi(self, total_balance):
 
-		if not self.reporter_db['wallet_init_balance']:
+		if 'wallet_init_balance' not in self.reporter_db:
+			self.reporter_db['wallet_init_balance'] = total_balance
 			return 0
 
 		return 100 * (total_balance / self.reporter_db['wallet_init_balance'] - 1)
@@ -605,8 +591,6 @@ class Reporter(MTC):
 
 	def emergency_update(self, emergency_flags):
 
-		emergency_flags_on_disk = copy.deepcopy(self.emergency_flags)
-
 		#################################
 		# Exit Only
 		#################################
@@ -635,8 +619,7 @@ class Reporter(MTC):
 		self.emergency_flags['recovery'] = int(len(self.emergency_flags['recovery_flags'].keys()) != 0)
 		self.emergency_flags['warning'] = int(len(self.emergency_flags['warning_flags'].keys()) != 0)
 
-		if emergency_flags_on_disk != self.emergency_flags:
-			self.save_json_to_file(self.emergency_flags, self.EMERGENCY_FLAGS_FILE)
+		self.save_json_to_file(self.emergency_flags, self.EMERGENCY_FLAGS_FILE)
 
 		if self.emergency_flags['exit']:
 			self.exit_next_elections()
@@ -677,6 +660,8 @@ class Reporter(MTC):
 				validator_load = self.get_validator_load(validator_index, str(validations_started_at))
 				participate_in_curr_validation = self.participate_in_curr_validation(mytoncore_db, past_election_ids, adnl_addr)
 				min_prob = self.min_prob(validator_load)
+				sub_wallet_id = self.get_sub_wallet_id(validator_wallet)
+				last_reporter_pid = pid
 
 				self.metrics['validator_index'] = validator_index
 				self.metrics['adnl_addr'] = adnl_addr
@@ -699,7 +684,7 @@ class Reporter(MTC):
 				self.metrics['min_prob'] = min_prob
 				self.metrics['net_load_avg'], self.metrics['disk_load_pct_avg'], self.metrics['mem_load_avg'] = self.get_load_stats(mytoncore_db)
 				self.metrics['total_stake'] = total_stake
-				self.metrics['sub_wallet_id'] = self.get_sub_wallet_id(validator_wallet)
+				self.metrics['sub_wallet_id'] = sub_wallet_id
 				self.metrics['version'], self.metrics['capabilities'] = version, capabilities
 				self.metrics['num_stakers'] = num_stakers
 				self.metrics['reporter_pid'] = pid
@@ -716,7 +701,6 @@ class Reporter(MTC):
 				emergency_flags['recovery_flags']['min_prob'] = min_prob < .1
 
 				# exit flags
-				emergency_flags['exit_flags']['validator_load'] = participate_in_curr_validation and validator_load == -1 and float(validations_started_at) - time.time() > 15
 				emergency_flags['exit_flags']['restricted_wallet_not_exists'] = int(self.restricted_wallet_exists() != 1)
 				emergency_flags['exit_flags']['validators_elected_for_changed'] = int(config15['validatorsElectedFor'] != self.const['validators_elected_for'])
 				emergency_flags['exit_flags']['elections_start_before_changed'] = int(config15['electionsStartBefore'] != self.const['elections_start_before'])
@@ -734,8 +718,8 @@ class Reporter(MTC):
 				emergency_flags['exit_flags']['global_version_changed'] = self.global_version_changed(version, capabilities)
 				emergency_flags['exit_flags']['complaint_detected'] = int(self.detect_comlaint(mytoncore_db, past_election_ids, adnl_addr) == 1)
 				emergency_flags['exit_flags']['restricted_addr_changed'] = self.restricted_addr_changed(validator_wallet.addrB64)
-				emergency_flags['exit_flags']['reporter_pid_changed'] = self.reporter_pid_changed(self.metrics['reporter_pid'])
-				emergency_flags['exit_flags']['sub_wallet_id_ok'] = int(self.metrics['sub_wallet_id'] != 0)
+				# emergency_flags['exit_flags']['reporter_pid_changed'] = int(pid != last_reporter_pid)
+				emergency_flags['exit_flags']['sub_wallet_id_ok'] = int(sub_wallet_id != 0)
 				emergency_flags['exit_flags']['new_offers'] = self.new_offers()
 
 				# recovery flags
@@ -754,11 +738,12 @@ class Reporter(MTC):
 			except Exception as e:
 				retry += 1
 				success = False
+				time.sleep(1)
 				self.log.info(self.metrics)
 				self.log.info(f'unexpected error: {e}')
 				self.log.info(traceback.format_exc())
 
-			if success or retry >= 3:
+			if success or retry >= 5:
 				retry = 0
 				sleep_sec = self.SLEEP_INTERVAL - time.time() % self.SLEEP_INTERVAL
 				self.log.info(f'executed in {round(time.time() - start_time, 2)} seconds')
