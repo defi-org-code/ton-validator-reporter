@@ -719,15 +719,15 @@ class Reporter(MTC):
 				emergency_flags['exit_flags']['complaint_detected'] = int(self.detect_comlaint(mytoncore_db, past_election_ids, adnl_addr) == 1)
 				emergency_flags['exit_flags']['restricted_addr_changed'] = self.restricted_addr_changed(validator_wallet.addrB64)
 				# emergency_flags['exit_flags']['reporter_pid_changed'] = int(pid != last_reporter_pid)
-				emergency_flags['exit_flags']['sub_wallet_id_ok'] = int(sub_wallet_id != 0)
+				emergency_flags['exit_flags']['sub_wallet_id_err'] = int(sub_wallet_id != 0)
 				emergency_flags['exit_flags']['new_offers'] = self.new_offers()
 
 				# recovery flags
 				emergency_flags['recovery_flags']['systemctl_status_validator'] = int(self.systemctl_status_validator_ok() != 1)
-				emergency_flags['recovery_flags']['out_of_sync_ok'] = int(self.metrics['out_of_sync'] < 50)
-				emergency_flags['recovery_flags']['mem_load_avg_ok'] = int(self.metrics['mem_load_avg'] > 85)
-				emergency_flags['recovery_flags']['disk_load_pct_avg'] = int(self.metrics['mem_load_avg'] > 85)
-				emergency_flags['recovery_flags']['net_load_avg'] = int(self.metrics['mem_load_avg'] > 400)
+				emergency_flags['recovery_flags']['out_of_sync_err'] = int(self.metrics['out_of_sync'] > 50)
+				emergency_flags['recovery_flags']['mem_load_avg_err'] = int(self.metrics['mem_load_avg'] > 85)
+				emergency_flags['recovery_flags']['disk_load_pct_avg_err'] = int(self.metrics['mem_load_avg'] > 85)
+				emergency_flags['recovery_flags']['net_load_avg_err'] = int(self.metrics['mem_load_avg'] > 400)
 
 				self.emergency_update(emergency_flags)
 
