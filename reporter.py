@@ -30,7 +30,7 @@ class MTC(object):
 
 		assert start < end, 'start time should be less than end time'
 
-		cmd = "checkloadall {start} {end} {filePrefix}".format(end=end, start=start, filePrefix="t01")
+		cmd = "checkloadall {start} {end}".format(end=end, start=start)
 		result = self.mtc.liteClient.Run(cmd, timeout=30)
 		lines = result.split('\n')
 		data = dict()
@@ -724,7 +724,7 @@ class Reporter(MTC):
 
 				# recovery flags
 				emergency_flags['recovery_flags']['systemctl_status_validator'] = int(self.systemctl_status_validator_ok() != 1)
-				emergency_flags['recovery_flags']['out_of_sync_ok'] = int(self.metrics['out_of_sync'] > 50)
+				emergency_flags['recovery_flags']['out_of_sync_ok'] = int(self.metrics['out_of_sync'] < 50)
 				emergency_flags['recovery_flags']['mem_load_avg_ok'] = int(self.metrics['mem_load_avg'] > 85)
 				emergency_flags['recovery_flags']['disk_load_pct_avg'] = int(self.metrics['mem_load_avg'] > 85)
 				emergency_flags['recovery_flags']['net_load_avg'] = int(self.metrics['mem_load_avg'] > 400)
