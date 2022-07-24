@@ -621,7 +621,7 @@ class Reporter(MTC):
 		self.emergency_flags['exit'] = int(len(self.emergency_flags['exit_flags'].keys()) != 0)
 		self.emergency_flags['recovery'] = int(len(self.emergency_flags['recovery_flags'].keys()) != 0)
 		self.emergency_flags['warning'] = int(len(self.emergency_flags['warning_flags'].keys()) != 0)
-		self.emergency_flags['message'] = f"exit_flags: {self.emergency_flags['exit_flags'].keys()}, recovery_flags: {self.emergency_flags['recovery_flags'].keys()}"
+		self.emergency_flags['message'] = f"exit_flags: {list(self.emergency_flags['exit_flags'].keys())}, recovery_flags: {list(self.emergency_flags['recovery_flags'].keys())}"
 
 		self.save_json_to_file(self.emergency_flags, self.EMERGENCY_FLAGS_FILE)
 
