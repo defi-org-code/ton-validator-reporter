@@ -292,7 +292,10 @@ class Reporter(MTC):
 	def participate_in_next_validation(self, mytoncore_db, past_election_ids, adnl_addr):
 		return int(float(past_election_ids[0]) > time.time() and self.participates_in_election_id(mytoncore_db, str(past_election_ids[0]), adnl_addr))
 
-	def participate_in_curr_validation(self, mytoncore_db, past_election_ids, adnl_addr):
+	def participate_in_curr_validation(self, mytoncore_db, past_election_ids, adnl_addr, validator_index):
+
+		if validator_index == -1:
+			return 0
 
 		if float(past_election_ids[0]) < time.time():
 			return self.participates_in_election_id(mytoncore_db, str(past_election_ids[0]), adnl_addr)
@@ -618,6 +621,7 @@ class Reporter(MTC):
 		self.emergency_flags['exit'] = int(len(self.emergency_flags['exit_flags'].keys()) != 0)
 		self.emergency_flags['recovery'] = int(len(self.emergency_flags['recovery_flags'].keys()) != 0)
 		self.emergency_flags['warning'] = int(len(self.emergency_flags['warning_flags'].keys()) != 0)
+		self.emergency_flags['message'] = f"exit_flags: {self.emergency_flags['exit_flags'].keys()}, recovery_flags: {self.emergency_flags['recovery_flags'].keys()}"
 
 		self.save_json_to_file(self.emergency_flags, self.EMERGENCY_FLAGS_FILE)
 
@@ -658,7 +662,7 @@ class Reporter(MTC):
 				version, capabilities = self.get_global_version()
 				validations_started_at = self.validations_started_at(past_election_ids)
 				validator_load = self.get_validator_load(validator_index, str(validations_started_at))
-				participate_in_curr_validation = self.participate_in_curr_validation(mytoncore_db, past_election_ids, adnl_addr)
+				participate_in_curr_validation = self.participate_in_curr_validation(mytoncore_db, past_election_ids, adnl_addr, validator_index)
 				min_prob = self.min_prob(validator_load)
 				sub_wallet_id = self.get_sub_wallet_id(validator_wallet)
 				last_reporter_pid = pid
@@ -724,7 +728,7 @@ class Reporter(MTC):
 
 				# recovery flags
 				emergency_flags['recovery_flags']['systemctl_status_validator'] = int(self.systemctl_status_validator_ok() != 1)
-				emergency_flags['recovery_flags']['out_of_sync_err'] = int(self.metrics['out_of_sync'] > 50)
+				emergency_flags['recovery_flags']['out_of_sync_err'] = int(self.metrics['out_of_sync'] > 120)
 				emergency_flags['recovery_flags']['mem_load_avg_err'] = int(self.metrics['mem_load_avg'] > 85)
 				emergency_flags['recovery_flags']['disk_load_pct_avg_err'] = int(self.metrics['mem_load_avg'] > 85)
 				emergency_flags['recovery_flags']['net_load_avg_err'] = int(self.metrics['mem_load_avg'] > 400)
@@ -738,10 +742,10 @@ class Reporter(MTC):
 			except Exception as e:
 				retry += 1
 				success = False
-				time.sleep(1)
 				self.log.info(self.metrics)
 				self.log.info(f'unexpected error: {e}')
 				self.log.info(traceback.format_exc())
+				time.sleep(1)
 
 			if success or retry >= 5:
 				retry = 0
