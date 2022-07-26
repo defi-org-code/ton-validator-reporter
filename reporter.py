@@ -723,7 +723,7 @@ class Reporter(MTC):
 				emergency_flags['exit_flags']['complaint_detected'] = int(self.detect_comlaint(mytoncore_db, past_election_ids, adnl_addr) == 1)
 				emergency_flags['exit_flags']['restricted_addr_changed'] = self.restricted_addr_changed(validator_wallet.addrB64)
 				# emergency_flags['exit_flags']['reporter_pid_changed'] = int(pid != last_reporter_pid)
-				emergency_flags['exit_flags']['sub_wallet_id_err'] = int(sub_wallet_id != 0)
+				emergency_flags['exit_flags']['sub_wallet_id_err'] = int(sub_wallet_id != 698983190)
 				emergency_flags['exit_flags']['new_offers'] = self.new_offers()
 
 				# recovery flags
