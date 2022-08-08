@@ -135,6 +135,8 @@ class Reporter(MTC):
 		self.init_start_work_time()
 		self.emergency_flags_init()
 
+		self.prev_offers = []
+
 	def init_logger(self):
 
 		formatter = Formatter(fmt='[%(asctime)s] %(filename)s:%(lineno)s - %(message)s', datefmt='%Y-%m-%d,%H:%M:%S')
@@ -353,7 +355,7 @@ class Reporter(MTC):
 			self.reporter_db['wallet_init_balance'] = total_balance
 			return 0
 
-		return 100 * (total_balance / self.reporter_db['wallet_init_balance'] - 1)
+		return round(100 * (total_balance / self.reporter_db['wallet_init_balance'] - 1), 2)
 
 	def apy(self, roi):
 
@@ -397,9 +399,18 @@ class Reporter(MTC):
 		validators_load = self.get_validators_load(start_time, end_time)
 
 		if validator_id not in validators_load.keys():
-			return -1
+			return 0, {
+				'mc_blocks_created': -1,
+				'mc_blocks_expected': -1,
+				'mc_prob': -1,
+				'wc_blocks_created': -1,
+				'wc_blocks_expected': -1,
+				'wc_prob': -1,
+				'mr': -1,
+				'wr': -1,
+			}
 
-		return {
+		return 1, {
 			'mc_blocks_created': validators_load[validator_id]['masterBlocksCreated'],
 			'mc_blocks_expected': validators_load[validator_id]['masterBlocksExpected'],
 			'mc_prob': validators_load[validator_id]['masterProb'],
@@ -410,9 +421,9 @@ class Reporter(MTC):
 			'wr': validators_load[validator_id]['wr'],
 		}
 
-	def min_prob(self, validator_load):
-		# probability to close <= blocks_created blocks given th eexpected blocks to close are blocks_expected
-		if validator_load == -1:
+	def min_prob(self, active_validator, validator_load):
+		# probability to close <= blocks_created blocks given th expected blocks to close are blocks_expected
+		if not active_validator:
 			return self.MIN_PROB_NULL
 
 		return min(validator_load['mc_prob'], validator_load['wc_prob'])
@@ -525,17 +536,21 @@ class Reporter(MTC):
 
 		offers = self.mtc.GetOffers()
 
-		if self.metrics.get('offers') is None:
-			self.write_metrics_to_file('offers', offers)
+		if not offers:
 			return 0
 
-		if offers != self.metrics.get('offers'):
-			self.log.info(f'new offers: {offers}, old offers: {self.metrics.get("offers")} (diff: {list(set(offers) - set(self.metrics.get("offers")))})')
+		if not self.prev_offers:
+			self.prev_offers = offers
+			return 0
+
+		if offers[-1].get('hash') != self.prev_offers[-1].get('hash'):
+			self.prev_offers = offers
+			self.log.info(f'new offers: {offers}, prev offers: {self.prev_offers}')
 			return 1
 
 		return 0
 
-	def detect_comlaint(self, mytoncore_db, past_election_ids, adnl_addr):
+	def detect_complaint(self, mytoncore_db, past_election_ids, adnl_addr):
 
 		election_id = past_election_ids[0] if float(past_election_ids[0]) < time.time() else past_election_ids[1]
 		if 'saveComplaints' not in mytoncore_db or election_id not in mytoncore_db['saveComplaints']:
@@ -661,9 +676,9 @@ class Reporter(MTC):
 				pid = self.get_pid()
 				version, capabilities = self.get_global_version()
 				validations_started_at = self.validations_started_at(past_election_ids)
-				validator_load = self.get_validator_load(validator_index, str(validations_started_at))
+				active_validator, validator_load = self.get_validator_load(validator_index, str(validations_started_at))
 				participate_in_curr_validation = self.participate_in_curr_validation(mytoncore_db, past_election_ids, adnl_addr, validator_index)
-				min_prob = self.min_prob(validator_load)
+				min_prob = self.min_prob(active_validator, validator_load)
 				sub_wallet_id = self.get_sub_wallet_id(validator_wallet)
 				last_reporter_pid = pid
 
@@ -698,7 +713,7 @@ class Reporter(MTC):
 				emergency_flags = {'exit_flags': dict(), 'recovery_flags': dict(), 'warning_flags': dict()}
 
 				# exit & recovery flags
-				validator_load_not_updated = participate_in_curr_validation and validator_load == -1 and float(validations_started_at) - time.time() > 15
+				validator_load_not_updated = participate_in_curr_validation and not active_validator and float(validations_started_at) - time.time() > 15
 				emergency_flags['exit_flags']['validator_load'] = validator_load_not_updated
 				emergency_flags['recovery_flags']['validator_load'] = validator_load_not_updated
 				emergency_flags['exit_flags']['min_prob'] = min_prob < .1
@@ -719,7 +734,7 @@ class Reporter(MTC):
 				emergency_flags['exit_flags']['total_stake_reduced'] = self.total_stake_reduced(total_stake)
 				emergency_flags['exit_flags']['num_stakers_reduced'] = self.num_stakers_reduced(num_stakers)
 				emergency_flags['exit_flags']['global_version_changed'] = self.global_version_changed(version, capabilities)
-				emergency_flags['exit_flags']['complaint_detected'] = int(self.detect_comlaint(mytoncore_db, past_election_ids, adnl_addr) == 1)
+				emergency_flags['exit_flags']['complaint_detected'] = int(self.detect_complaint(mytoncore_db, past_election_ids, adnl_addr) == 1)
 				# emergency_flags['exit_flags']['restricted_addr_changed'] = self.restricted_addr_changed(validator_wallet.addrB64)
 				# emergency_flags['exit_flags']['reporter_pid_changed'] = int(pid != last_reporter_pid)
 				emergency_flags['exit_flags']['sub_wallet_id_err'] = int(sub_wallet_id != 698983190)

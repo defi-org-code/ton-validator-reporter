@@ -10,7 +10,7 @@ print('Reset and Enter script started')
 
 ton = mytonctrl.MyTonCore()
 stake = 'null'
-stake_percent = 49.99
+stake_percent = 99
 
 print(f'setting stake to {stake}')
 ton.SetSettings("stake", stake)
