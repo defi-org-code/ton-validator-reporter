@@ -129,11 +129,9 @@ class Reporter(MTC):
 
 		self.metrics = self.load_json_from_file(self.METRICS_FILE)
 		self.const = self.load_json_from_file(self.CONST_FILE)
-		self.emergency_flags = self.load_json_from_file(self.EMERGENCY_FLAGS_FILE)
 		self.reporter_db = self.load_json_from_file(self.DB_FILE)
 
 		self.init_start_work_time()
-		self.emergency_flags_init()
 
 		self.prev_offers = []
 
@@ -175,31 +173,6 @@ class Reporter(MTC):
 		with open(self.METRICS_FILE, 'w') as f:
 			json.dump(self.metrics, f)
 			self.log.info(f'{self.METRICS_FILE} was updated')
-
-	def emergency_flags_init(self):
-
-		emergency_flags = copy.deepcopy(self.emergency_flags)
-
-		if 'exit' not in self.emergency_flags:
-			self.emergency_flags['exit'] = 0
-
-		if 'recovery' not in self.emergency_flags:
-			self.emergency_flags['recovery'] = 0
-
-		if 'warning' not in self.emergency_flags:
-			self.emergency_flags['warning'] = 0
-
-		if 'exit_flags' not in self.emergency_flags:
-			self.emergency_flags['exit_flags'] = dict()
-
-		if 'recovery_flags' not in self.emergency_flags:
-			self.emergency_flags['recovery_flags'] = dict()
-
-		if 'warning_flags' not in self.emergency_flags:
-			self.emergency_flags['warning_flags'] = dict()
-
-		if emergency_flags != self.emergency_flags:
-			self.save_json_to_file(self.emergency_flags, self.EMERGENCY_FLAGS_FILE)
 
 	def init_start_work_time(self, start_work_time=None):
 
@@ -362,7 +335,7 @@ class Reporter(MTC):
 		if not roi:
 			return 0
 
-		return round(roi * self.SECONDS_IN_YEAR / (time.time() - self.reporter_db['start_work_time']), 2)
+		return max(round(roi * self.SECONDS_IN_YEAR / (time.time() - (self.const['validators_elected_for'] - self.const['elections_start_before']) - self.reporter_db['start_work_time']), 2), 0)
 
 	def calc_prev_cycle_apr(self, total_balance):
 
@@ -380,7 +353,7 @@ class Reporter(MTC):
 
 			roi = 100 * (total_balance / self.reporter_db['prev_cycle_total_balance'] - 1)
 			self.reporter_db['prev_cycle_total_balance'] = total_balance
-			self.reporter_db['prev_cycle_apr'] = round(roi * self.SECONDS_IN_YEAR / validation_cycle_in_seconds / 2, 2)
+			self.reporter_db['prev_cycle_apr'] = round(2 * roi * self.SECONDS_IN_YEAR / validation_cycle_in_seconds, 2)
 			self.save_json_to_file(self.reporter_db, self.DB_FILE)
 
 		return self.reporter_db['prev_cycle_apr']
@@ -607,40 +580,39 @@ class Reporter(MTC):
 		else:
 			self.log.info(f'Successfully set stake and stake_percent to 0')
 
-	def emergency_update(self, emergency_flags):
+	def emergency_update(self, emergency_flags_filler):
+
+		emergency_flags = {'exit_flags': dict(), 'recovery_flags': dict(), 'warning_flags': dict()}
 
 		#################################
 		# Exit Only
 		#################################
-		for key, value in emergency_flags['exit_flags'].items():
-
+		for key, value in emergency_flags_filler['exit_flags'].items():
 			if value != 0:
-				self.emergency_flags['exit_flags'][key] = 1
+				emergency_flags['exit_flags'][key] = 1
 
 		#################################
 		# Warning Only
 		#################################
-		for key, value in emergency_flags['warning_flags'].items():
-
+		for key, value in emergency_flags_filler['warning_flags'].items():
 			if value != 0:
-				self.emergency_flags['warning_flags'][key] = 1
+				emergency_flags['warning_flags'][key] = 1
 
 		#################################
 		# Recovery Only
 		#################################
-		for key, value in emergency_flags['recovery_flags'].items():
-
+		for key, value in emergency_flags_filler['recovery_flags'].items():
 			if value != 0:
-				self.emergency_flags['recovery_flags'][key] = 1
+				emergency_flags['recovery_flags'][key] = 1
 
-		self.emergency_flags['exit'] = int(len(self.emergency_flags['exit_flags'].keys()) != 0)
-		self.emergency_flags['recovery'] = int(len(self.emergency_flags['recovery_flags'].keys()) != 0)
-		self.emergency_flags['warning'] = int(len(self.emergency_flags['warning_flags'].keys()) != 0)
-		self.emergency_flags['message'] = f"exit_flags: {list(self.emergency_flags['exit_flags'].keys())}, recovery_flags: {list(self.emergency_flags['recovery_flags'].keys())}"
+		emergency_flags['exit'] = int(len(emergency_flags['exit_flags'].keys()) != 0)
+		emergency_flags['recovery'] = int(len(emergency_flags['recovery_flags'].keys()) != 0)
+		emergency_flags['warning'] = int(len(emergency_flags['warning_flags'].keys()) != 0)
+		emergency_flags['message'] = f"exit_flags: {list(emergency_flags['exit_flags'].keys())}, recovery_flags: {list(emergency_flags['recovery_flags'].keys())}"
 
-		self.save_json_to_file(self.emergency_flags, self.EMERGENCY_FLAGS_FILE)
+		self.save_json_to_file(emergency_flags, self.EMERGENCY_FLAGS_FILE)
 
-		if self.emergency_flags['exit']:
+		if emergency_flags['exit']:
 			self.exit_next_elections()
 
 	def report(self):
@@ -661,7 +633,6 @@ class Reporter(MTC):
 				self.log.info(f'validator reporter started at {datetime.utcnow()} (retry {retry})')
 
 				mytoncore_db = self.get_mytoncore_db()
-				self.emergency_flags = self.load_json_from_file(self.EMERGENCY_FLAGS_FILE)
 
 				validator_index = self.validator_index()
 				validator_wallet = self.validator_wallet()
