@@ -6,7 +6,7 @@ sys.path.append('/usr/src/mytonctrl')
 import mytonctrl
 from mypylib.mypylib import *
 
-print('Reset and Enter script started')
+print('Enter script started')
 
 ton = mytonctrl.MyTonCore()
 stake = 'null'

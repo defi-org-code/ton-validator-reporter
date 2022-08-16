@@ -5,10 +5,12 @@ sys.path.append('/usr/src/mytonctrl')
 import mytonctrl
 from mypylib.mypylib import *
 
+print('Exit script started')
+
 ton = mytonctrl.MyTonCore()
 
-print('setting stake to 0')
-ton.SetSettings("stake", 0)
+print('setting stake to null')
+ton.SetSettings("stake", 'null')
 print('setting stake percent to 0')
 ton.SetSettings("stakePercent", 0)
 
