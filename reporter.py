@@ -248,10 +248,20 @@ class Reporter(MTC):
 			return self.balance_at_elector(adnl_addr) + available_validator_balance
 
 	def get_local_stake(self):
-		return float(self.mtc.GetSettings("stake") or -1)
+		stake = self.mtc.GetSettings("stake")
+
+		if stake is None:
+			return -1
+
+		return float(self.mtc.GetSettings("stake"))
 
 	def get_local_stake_percent(self):
-		return float(self.mtc.GetSettings("stakePercent") or -1)
+		stake_percent = self.mtc.GetSettings("stakePercent")
+
+		if stake_percent is None:
+			return -1
+
+		return float(self.mtc.GetSettings("stakePercent"))
 
 	def get_stats(self):
 		return self.mtc.GetValidatorStatus()
