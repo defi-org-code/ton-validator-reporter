@@ -334,6 +334,9 @@ class Reporter(MTC):
 
 	def roi(self, total_balance):
 
+		if total_balance == 0:
+			return 0
+
 		if 'wallet_init_balance' not in self.reporter_db:
 			self.reporter_db['wallet_init_balance'] = total_balance
 			return 0
@@ -348,6 +351,9 @@ class Reporter(MTC):
 		return max(round(roi * self.SECONDS_IN_YEAR / (time.time() - (self.const['validators_elected_for'] - self.const['elections_start_before']) - self.reporter_db['start_work_time']), 2), 0)
 
 	def calc_prev_cycle_apr(self, total_balance):
+
+		if total_balance == 0:
+			return 0
 
 		if not self.reporter_db.get('prev_cycle_total_balance'):
 			self.reporter_db['prev_cycle_total_balance'] = total_balance
