@@ -334,7 +334,7 @@ class Reporter(MTC):
 
 	def roi(self, total_balance):
 
-		if total_balance == 0:
+		if total_balance < 1:
 			return 0
 
 		if 'wallet_init_balance' not in self.reporter_db:
@@ -352,7 +352,7 @@ class Reporter(MTC):
 
 	def calc_prev_cycle_apr(self, total_balance):
 
-		if total_balance == 0:
+		if total_balance < 0:
 			return 0
 
 		if not self.reporter_db.get('prev_cycle_total_balance'):
