@@ -305,7 +305,7 @@ class Reporter(MTC):
 		else:
 			return int((int(past_election_ids[0]) + int(self.const['validators_elected_for']) - time.time()) / 60)
 
-	def validations_started_at(self, past_election_ids):
+	def validation_started_at(self, past_election_ids):
 
 		if float(past_election_ids[0]) > time.time():
 			assert float(past_election_ids[1]) < time.time(), f'election_id {past_election_ids[1]} is expected to less than current time {time.time()}'
@@ -657,13 +657,16 @@ class Reporter(MTC):
 				available_validator_balance = self.available_validator_balance(validator_account)
 				stats = self.get_stats()
 				config15 = self.mtc.GetConfig15()
+				config34 = self.mtc.GetConfig34()
+				validation_started_at = str(config34['startWorkTime'])
+				validation_end_at = str(config34['endWorkTime'])
 				past_election_ids = self.past_election_ids(mytoncore_db)
 				total_stake = self.get_total_stake(mytoncore_db)
 				num_stakers = self.get_num_stakers(mytoncore_db)
 				pid = self.get_pid()
 				version, capabilities = self.get_global_version()
-				validations_started_at = self.validations_started_at(past_election_ids)
-				active_validator, validator_load = self.get_validator_load(validator_index, str(validations_started_at))
+				# validation_started_at = self.validation_started_at(past_election_ids)
+				active_validator, validator_load = self.get_validator_load(validator_index, str(validation_started_at))
 				participate_in_curr_validation = self.participate_in_curr_validation(mytoncore_db, past_election_ids, adnl_addr, validator_index)
 				min_prob = self.min_prob(active_validator, validator_load)
 				sub_wallet_id = self.get_sub_wallet_id(validator_wallet)
@@ -681,7 +684,8 @@ class Reporter(MTC):
 				self.metrics['active_election_id'] = self.active_election_id()
 				self.metrics['elections_ends_in'] = self.elections_ends_in(past_election_ids)
 				self.metrics['validations_ends_in'] = self.validation_ends_in(past_election_ids)
-				self.metrics['validations_started_at'] = validations_started_at
+				self.metrics['validation_started_at'] = validation_started_at
+				self.metrics['validation_end_at'] = validation_end_at
 				self.metrics['total_validator_balance'] = self.estimate_total_validator_balance(mytoncore_db, past_election_ids, adnl_addr, available_validator_balance)
 				self.metrics['roi'] = self.roi(self.metrics['total_validator_balance'])
 				self.metrics['apy'] = self.apy(self.metrics['roi'])
@@ -700,7 +704,7 @@ class Reporter(MTC):
 				emergency_flags = {'exit_flags': dict(), 'recovery_flags': dict(), 'warning_flags': dict()}
 
 				# exit & recovery flags
-				validator_load_not_updated = participate_in_curr_validation and not active_validator and float(validations_started_at) - time.time() > 15
+				validator_load_not_updated = participate_in_curr_validation and not active_validator and float(validation_started_at) - time.time() > 15
 				emergency_flags['exit_flags']['validator_load'] = validator_load_not_updated
 				emergency_flags['recovery_flags']['validator_load'] = validator_load_not_updated
 				emergency_flags['exit_flags']['min_prob'] = min_prob < .1
