@@ -202,6 +202,7 @@ class Reporter(MTC):
 	def get_sub_wallet_id(self, wallet):
 		res = self.mtc.liteClient.Run(f'runmethod {wallet.addrB64} wallet_id')
 		res = self.mtc.GetVarFromWorkerOutput(res, "result")
+		self.log.info('res: ', res)
 
 		if not res:
 			return -1
@@ -669,7 +670,7 @@ class Reporter(MTC):
 				active_validator, validator_load = self.get_validator_load(validator_index, str(validation_started_at))
 				participate_in_curr_validation = self.participate_in_curr_validation(mytoncore_db, past_election_ids, adnl_addr, validator_index)
 				min_prob = self.min_prob(active_validator, validator_load)
-				sub_wallet_id = self.get_sub_wallet_id(validator_wallet)
+				# sub_wallet_id = self.get_sub_wallet_id(validator_wallet)
 				last_reporter_pid = pid
 
 				self.metrics['validator_index'] = validator_index
@@ -694,7 +695,7 @@ class Reporter(MTC):
 				self.metrics['min_prob'] = min_prob
 				self.metrics['net_load_avg'], self.metrics['disk_load_pct_avg'], self.metrics['mem_load_avg'] = self.get_load_stats(mytoncore_db)
 				self.metrics['total_stake'] = total_stake
-				self.metrics['sub_wallet_id'] = sub_wallet_id
+				# self.metrics['sub_wallet_id'] = sub_wallet_id
 				self.metrics['version'], self.metrics['capabilities'] = version, capabilities
 				self.metrics['num_stakers'] = num_stakers
 				self.metrics['reporter_pid'] = pid
@@ -721,14 +722,14 @@ class Reporter(MTC):
 				emergency_flags['exit_flags']['config_addr_changed'] = self.config_addr_changed()
 				emergency_flags['exit_flags']['elector_code_changed'] = self.elector_code_changed()
 				emergency_flags['exit_flags']['config_code_changed'] = self.config_code_changed()
-				emergency_flags['exit_flags']['restricted_code_changed'] = self.restricted_code_changed(validator_account)
+				# emergency_flags['exit_flags']['restricted_code_changed'] = self.restricted_code_changed(validator_account)
 				emergency_flags['exit_flags']['total_stake_reduced'] = self.total_stake_reduced(total_stake)
 				emergency_flags['exit_flags']['num_stakers_reduced'] = self.num_stakers_reduced(num_stakers)
 				emergency_flags['exit_flags']['global_version_changed'] = self.global_version_changed(version, capabilities)
 				emergency_flags['exit_flags']['complaint_detected'] = int(self.detect_complaint(mytoncore_db, past_election_ids, adnl_addr) == 1)
 				# emergency_flags['exit_flags']['restricted_addr_changed'] = self.restricted_addr_changed(validator_wallet.addrB64)
 				# emergency_flags['exit_flags']['reporter_pid_changed'] = int(pid != last_reporter_pid)
-				emergency_flags['exit_flags']['sub_wallet_id_err'] = int(sub_wallet_id != 698983190)
+				# emergency_flags['exit_flags']['sub_wallet_id_err'] = int(sub_wallet_id != 698983190)
 				emergency_flags['exit_flags']['new_offers'] = self.new_offers()
 
 				# recovery flags
