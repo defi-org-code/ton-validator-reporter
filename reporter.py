@@ -104,10 +104,10 @@ class MTC(object):
 
 class Reporter(MTC):
 	HOME = Path.home()
-	RESTRICTED_WALLET_NAME = 'validator_wallet_001'
+	VALIDATOR_WALLET_NAME = 'validator_wallet_001'
 	WALLET_PATH = f'{HOME}/.local/share/mytoncore/wallets/'
-	WALLET_PK_PATH = f'{WALLET_PATH}/{RESTRICTED_WALLET_NAME}.pk'
-	WALLET_ADDR_PATH = f'{WALLET_PATH}/{RESTRICTED_WALLET_NAME}.addr'
+	WALLET_PK_PATH = f'{WALLET_PATH}/{VALIDATOR_WALLET_NAME}.pk'
+	WALLET_ADDR_PATH = f'{WALLET_PATH}/{VALIDATOR_WALLET_NAME}.addr'
 	MYTONCORE_FILE_PATH = f'{HOME}/.local/share/mytoncore/mytoncore.db'
 	REPORTER_DIR = f'/var/reporter'
 	METRICS_FILE = f'{REPORTER_DIR}/metrics.json'
@@ -187,11 +187,11 @@ class Reporter(MTC):
 	def systemctl_status_validator_ok(self):
 		return int(self.systemctl_status_validator() == 0)
 
-	def restricted_wallet_exists(self):
+	def validator_wallet_exists(self):
 		return int(os.path.exists(self.WALLET_PK_PATH) and os.path.exists(self.WALLET_ADDR_PATH))
 
-	def restricted_addr_changed(self, wallet_addr):
-		return int(wallet_addr != self.const['restricted_wallet_addr'])
+	def validator_addr_changed(self, wallet_addr):
+		return int(wallet_addr != self.const['validator_wallet_addr'])
 
 	def validator_index(self):
 		return self.mtc.GetValidatorIndex()
@@ -481,15 +481,6 @@ class Reporter(MTC):
 
 		return 0
 
-	def restricted_code_changed(self, validator_account):
-
-		assert validator_account, 'validator account is not set yet'
-
-		if validator_account.codeHash != self.const['restricted_code_hash']:
-			return 1
-
-		return 0
-
 	def get_total_stake(self, mytoncore_db):
 
 		prev_election_id = sorted(mytoncore_db['saveElections'].keys(), reverse=True)[1]
@@ -625,7 +616,8 @@ class Reporter(MTC):
 		emergency_flags['exit'] = int(len(emergency_flags['exit_flags'].keys()) != 0)
 		emergency_flags['recovery'] = int(len(emergency_flags['recovery_flags'].keys()) != 0)
 		emergency_flags['warning'] = int(len(emergency_flags['warning_flags'].keys()) != 0)
-		emergency_flags['message'] = f"exit_flags: {list(emergency_flags['exit_flags'].keys())}, recovery_flags: {list(emergency_flags['recovery_flags'].keys())}"
+		emergency_flags['message'] = f"exit_flags: {list(emergency_flags['exit_flags'].keys())}, recovery_flags: {list(emergency_flags['recovery_flags'].keys())}, " \
+		f"warning_flags: {list(emergency_flags['warning_flags'].keys())}"
 
 		self.save_json_to_file(emergency_flags, self.EMERGENCY_FLAGS_FILE)
 
@@ -699,7 +691,7 @@ class Reporter(MTC):
 				self.metrics['version'], self.metrics['capabilities'] = version, capabilities
 				self.metrics['num_stakers'] = num_stakers
 				self.metrics['reporter_pid'] = pid
-				self.metrics['restricted_wallet_addr'] = validator_wallet.addrB64
+				self.metrics['validator_wallet_addr'] = validator_wallet.addrB64
 				self.metrics['update_time'] = time.time()
 
 				emergency_flags = {'exit_flags': dict(), 'recovery_flags': dict(), 'warning_flags': dict()}
@@ -712,7 +704,7 @@ class Reporter(MTC):
 				emergency_flags['recovery_flags']['min_prob'] = min_prob < .1
 
 				# exit flags
-				emergency_flags['exit_flags']['restricted_wallet_not_exists'] = int(self.restricted_wallet_exists() != 1)
+				emergency_flags['exit_flags']['validator_wallet_not_exists'] = int(self.validator_wallet_exists() != 1)
 				emergency_flags['exit_flags']['validators_elected_for_changed'] = int(config15['validatorsElectedFor'] != self.const['validators_elected_for'])
 				emergency_flags['exit_flags']['elections_start_before_changed'] = int(config15['electionsStartBefore'] != self.const['elections_start_before'])
 				emergency_flags['exit_flags']['elections_end_before_changed'] = int(config15['electionsEndBefore'] != self.const['elections_end_before'])
@@ -726,7 +718,6 @@ class Reporter(MTC):
 				emergency_flags['exit_flags']['num_stakers_reduced'] = self.num_stakers_reduced(num_stakers)
 				emergency_flags['exit_flags']['global_version_changed'] = self.global_version_changed(version, capabilities)
 				emergency_flags['exit_flags']['complaint_detected'] = int(self.detect_complaint(mytoncore_db, past_election_ids, adnl_addr) == 1)
-				# emergency_flags['exit_flags']['restricted_addr_changed'] = self.restricted_addr_changed(validator_wallet.addrB64)
 				# emergency_flags['exit_flags']['reporter_pid_changed'] = int(pid != last_reporter_pid)
 				# emergency_flags['exit_flags']['sub_wallet_id_err'] = int(sub_wallet_id != 698983190)
 				emergency_flags['exit_flags']['new_offers'] = self.new_offers()
