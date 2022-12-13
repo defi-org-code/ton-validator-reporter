@@ -722,7 +722,6 @@ class Reporter(MTC):
 				emergency_flags['exit_flags']['config_addr_changed'] = self.config_addr_changed()
 				emergency_flags['exit_flags']['elector_code_changed'] = self.elector_code_changed()
 				emergency_flags['exit_flags']['config_code_changed'] = self.config_code_changed()
-				# emergency_flags['exit_flags']['restricted_code_changed'] = self.restricted_code_changed(validator_account)
 				emergency_flags['exit_flags']['total_stake_reduced'] = self.total_stake_reduced(total_stake)
 				emergency_flags['exit_flags']['num_stakers_reduced'] = self.num_stakers_reduced(num_stakers)
 				emergency_flags['exit_flags']['global_version_changed'] = self.global_version_changed(version, capabilities)
@@ -738,6 +737,9 @@ class Reporter(MTC):
 				emergency_flags['recovery_flags']['mem_load_avg_err'] = int(self.metrics['mem_load_avg'] > 85)
 				emergency_flags['recovery_flags']['disk_load_pct_avg_err'] = int(self.metrics['mem_load_avg'] > 85)
 				emergency_flags['recovery_flags']['net_load_avg_err'] = int(self.metrics['mem_load_avg'] > 400)
+
+				# warning flags
+				emergency_flags['warning_flags']['low_validator_balance'] = available_validator_balance < 25
 
 				self.emergency_update(emergency_flags)
 

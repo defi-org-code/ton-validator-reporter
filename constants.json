@@ -9,7 +9,6 @@
 	"suggested_fine_part": 0.0,
 	"elector_code_hash": "e3d87857010cbeafd51b7b138554bf096557f79f9dba51bdb99aa4de314172c4",
 	"config_code_hash": "c870b159119a3b67c98754cd4e569257a6a0e58439c49081dced9ea113d045b4",
-	"restricted_code_hash": "565a3408bdf1c091d3a90f276d34f89ee465df06d6176904e99300992013fdc1",
 	"version": 2,
 	"capabilities": 46,
 	"reporter_version": "1.0.0"
