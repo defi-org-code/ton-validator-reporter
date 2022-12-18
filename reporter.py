@@ -213,7 +213,7 @@ class Reporter(MTC):
 			self.log.info(f'error: unable to extract wallet_id: {e}')
 			return -1
 
-	def single_nominator_contract(self):
+	def single_nominator(self):
 		pools = self.mtc.GetPools()
 		assert len(pools) == 1, f'expected exactly 1 single nominator but detected {len(pools)} pools'
 		account = self.mtc.GetAccount(pools[0].addrB64)
@@ -657,7 +657,7 @@ class Reporter(MTC):
 
 				mytoncore_db = self.get_mytoncore_db()
 
-				single_nominator = self.single_nominator_contract()
+				single_nominator = self.single_nominator()
 				validator_index = self.validator_index()
 				validator_wallet = self.validator_wallet()
 				validator_account = self.validator_account(validator_wallet)
@@ -707,6 +707,7 @@ class Reporter(MTC):
 				self.metrics['num_stakers'] = num_stakers
 				self.metrics['reporter_pid'] = pid
 				self.metrics['validator_wallet_addr'] = validator_wallet.addrB64
+				self.metrics['single_nominator_hash'] = single_nominator.codeHash
 				self.metrics['update_time'] = time.time()
 
 				emergency_flags = {'exit_flags': dict(), 'recovery_flags': dict(), 'warning_flags': dict()}
