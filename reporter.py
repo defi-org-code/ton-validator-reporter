@@ -213,6 +213,11 @@ class Reporter(MTC):
 			self.log.info(f'error: unable to extract wallet_id: {e}')
 			return -1
 
+	def single_nominator_contract(self):
+		pools = self.mtc.GetPools()
+		assert len(pools) == 1, f'expected exactly 1 single nominator but detected {len(pools)} pools'
+		return pools[0]
+
 	def validator_wallet(self):
 		return self.mtc.GetValidatorWallet()
 
@@ -461,6 +466,15 @@ class Reporter(MTC):
 
 		return 0
 
+	def single_nominator_code_changed(self, single_nominator):
+
+		self.log.info(f'single_nominator.codeHash ${single_nominator.codeHash}')
+
+		if single_nominator.codeHash != self.const['single_nominator_hash']:
+			return 1
+
+		return 0
+
 	def elector_code_changed(self):
 
 		elector_account = self.mtc.GetAccount(self.const['elector_addr'])
@@ -643,6 +657,7 @@ class Reporter(MTC):
 
 				mytoncore_db = self.get_mytoncore_db()
 
+				single_nominator = self.single_nominator_contract()
 				validator_index = self.validator_index()
 				validator_wallet = self.validator_wallet()
 				validator_account = self.validator_account(validator_wallet)
@@ -710,6 +725,7 @@ class Reporter(MTC):
 				emergency_flags['exit_flags']['elections_end_before_changed'] = int(config15['electionsEndBefore'] != self.const['elections_end_before'])
 				emergency_flags['exit_flags']['stake_held_for_changed'] = int(config15['stakeHeldFor'] != self.const['stake_held_for'])
 				emergency_flags['exit_flags']['fine_changed'] = self.check_fine_changes(mytoncore_db)
+				emergency_flags['exit_flags']['single_nominator_code_changed'] = self.single_nominator_code_changed(single_nominator)
 				emergency_flags['exit_flags']['elector_addr_changed'] = self.elector_addr_changed()
 				emergency_flags['exit_flags']['config_addr_changed'] = self.config_addr_changed()
 				emergency_flags['exit_flags']['elector_code_changed'] = self.elector_code_changed()
