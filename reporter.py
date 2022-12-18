@@ -216,6 +216,8 @@ class Reporter(MTC):
 	def single_nominator_contract(self):
 		pools = self.mtc.GetPools()
 		assert len(pools) == 1, f'expected exactly 1 single nominator but detected {len(pools)} pools'
+		account = self.mtc.GetAccount(pools[0].addrB64)
+		setattr(pools[0], 'codeHash', account.codeHash)
 		return pools[0]
 
 	def validator_wallet(self):
@@ -467,8 +469,6 @@ class Reporter(MTC):
 		return 0
 
 	def single_nominator_code_changed(self, single_nominator):
-
-		self.log.info(f'single_nominator.codeHash ${single_nominator.codeHash}')
 
 		if single_nominator.codeHash != self.const['single_nominator_hash']:
 			return 1
