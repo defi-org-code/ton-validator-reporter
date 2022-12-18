@@ -11,13 +11,13 @@ ton = mytonctrl.MyTonCore()
 
 print('setting stake to null')
 ton.SetSettings("stake", 'null')
-print('setting stake percent to 0')
-ton.SetSettings("stakePercent", 0)
+print('setting stake percent to null')
+ton.SetSettings("stakePercent", 'null')
 
 stake = ton.GetSettings("stake")
 stake_pct = ton.GetSettings("stakePercent")
 
-assert stake == 0, f'stake was not set to 0 {stake}'
-assert stake_pct == 0, f'stake percent was not set to 0 {stake_pct}'
+assert stake is None, f'stake was not set to 0 {stake}'
+assert stake_pct is None, f'stake percent was not set to 0 {stake_pct}'
 
 print('all done')
