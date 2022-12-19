@@ -11,6 +11,7 @@ from logging.handlers import RotatingFileHandler
 import traceback
 from logging import Formatter, getLogger, StreamHandler
 import copy
+import math
 
 sys.path.append('/usr/src/mytonctrl')
 
@@ -131,9 +132,9 @@ class Reporter(MTC):
 		self.const = self.load_json_from_file(self.CONST_FILE)
 		self.reporter_db = self.load_json_from_file(self.DB_FILE)
 
-		self.init_start_work_time()
-
 		self.prev_offers = []
+		self.next_apy_update = 0
+		self.apy = 0
 
 	def init_logger(self):
 
@@ -174,10 +175,9 @@ class Reporter(MTC):
 			json.dump(self.metrics, f)
 			self.log.info(f'{self.METRICS_FILE} was updated')
 
-	def init_start_work_time(self, start_work_time=None):
+	def update_start_work_time(self, participate_in_next_validation, start_work_time):
 
-		if 'start_work_time' not in self.reporter_db.keys():
-			start_work_time = start_work_time or time.time()
+		if 'start_work_time' not in self.reporter_db.keys() and participate_in_next_validation:
 			self.reporter_db['start_work_time'] = start_work_time
 			self.save_json_to_file(self.reporter_db, self.DB_FILE)
 
@@ -217,7 +217,7 @@ class Reporter(MTC):
 		pools = self.mtc.GetPools()
 		assert len(pools) == 1, f'expected exactly 1 single nominator but detected {len(pools)} pools'
 		account = self.mtc.GetAccount(pools[0].addrB64)
-		setattr(pools[0], 'codeHash', account.codeHash)
+		setattr(pools[0], 'account', account)
 		return pools[0]
 
 	def validator_wallet(self):
@@ -226,7 +226,10 @@ class Reporter(MTC):
 	def validator_account(self, validator_wallet):
 		return self.mtc.GetAccount(validator_wallet.addrB64)
 
-	def available_validator_balance(self, validator_account):
+	def free_nominator_balance(self, nominator_account):
+		return nominator_account.account.balance
+
+	def free_validator_balance(self, validator_account):
 		return validator_account.balance
 
 	def balance_at_elector(self, adnl_addr):
@@ -238,7 +241,7 @@ class Reporter(MTC):
 		else:
 			return 0
 
-	def estimate_total_validator_balance(self, mytoncore_db, past_election_ids, adnl_addr, available_validator_balance):
+	def estimate_total_validator_balance(self, mytoncore_db, past_election_ids, adnl_addr, free_balance):
 
 		reported_stakes = list()
 		reported_stakes.append(self.get_stake_from_mytoncore_db(mytoncore_db, past_election_ids[0], adnl_addr))
@@ -246,14 +249,14 @@ class Reporter(MTC):
 		reported_stakes.append(self.get_stake_from_mytoncore_db(mytoncore_db, past_election_ids[2], adnl_addr))
 
 		if reported_stakes[0]:
-			return sum(reported_stakes[0:2]) + available_validator_balance
+			return sum(reported_stakes[0:2]) + free_balance
 
 		elif reported_stakes[1]:
-			return sum(reported_stakes[1:3]) + available_validator_balance
+			return sum(reported_stakes[1:3]) + free_balance
 
 		else:
 			# fetch balance from elector as we might sent the funds to elector but mytoncore_db was not updated yet
-			return self.balance_at_elector(adnl_addr) + available_validator_balance
+			return self.balance_at_elector(adnl_addr) + free_balance
 
 	def get_local_stake(self):
 		stake = self.mtc.GetSettings("stake")
@@ -340,7 +343,7 @@ class Reporter(MTC):
 
 		return int(mytoncore_db['saveElections'][election_id][adnl_addr]['stake'])
 
-	def roi(self, total_balance):
+	def calc_roi(self, total_balance):
 
 		if total_balance < 1:
 			return 0
@@ -351,36 +354,16 @@ class Reporter(MTC):
 
 		return round(100 * (total_balance / self.reporter_db['wallet_init_balance'] - 1), 2)
 
-	def apy(self, roi):
+	def calc_apy(self, roi):
 
-		if not roi:
+		if not roi or not self.reporter_db.get('start_work_time'):
 			return 0
 
-		return max(round(roi * self.SECONDS_IN_YEAR / (time.time() - (self.const['validators_elected_for'] - self.const['elections_start_before']) - self.reporter_db['start_work_time']), 2), 0)
-
-	def calc_prev_cycle_apr(self, total_balance):
-
-		if total_balance < 0:
-			return 0
-
-		if not self.reporter_db.get('prev_cycle_total_balance'):
-			self.reporter_db['prev_cycle_total_balance'] = total_balance
-			self.save_json_to_file(self.reporter_db, self.DB_FILE)
-			return None
-
-		if not self.reporter_db.get('prev_cycle_apr'):
-			self.reporter_db['prev_cycle_apr'] = None
-			self.save_json_to_file(self.reporter_db, self.DB_FILE)
-
-		if total_balance != self.reporter_db['prev_cycle_total_balance']:
-			validation_cycle_in_seconds = self.const['validators_elected_for']
-
-			roi = 100 * (total_balance / self.reporter_db['prev_cycle_total_balance'] - 1)
-			self.reporter_db['prev_cycle_total_balance'] = total_balance
-			self.reporter_db['prev_cycle_apr'] = round(2 * roi * self.SECONDS_IN_YEAR / validation_cycle_in_seconds, 2)
-			self.save_json_to_file(self.reporter_db, self.DB_FILE)
-
-		return self.reporter_db['prev_cycle_apr']
+		if time.time() < self.next_apy_update:
+			return self.apy
+		else:
+			self.next_apy_update = math.ceil(time.time() / self.const['validators_elected_for']) + self.const['stake_held_for'] + 630
+			self.apy = max(round(roi * self.SECONDS_IN_YEAR / (self.const['validators_elected_for'] * math.floor(time.time() / self.const['validators_elected_for']) - self.reporter_db['start_work_time']), 2), 0)
 
 	def get_validator_load(self, validator_id, election_id):
 		# get validator load at index validator_id returns -1 if validator id not found
@@ -470,7 +453,7 @@ class Reporter(MTC):
 
 	def single_nominator_code_changed(self, single_nominator):
 
-		if single_nominator.codeHash != self.const['single_nominator_hash']:
+		if single_nominator.account.codeHash != self.const['single_nominator_hash']:
 			return 1
 
 		return 0
@@ -662,7 +645,8 @@ class Reporter(MTC):
 				validator_wallet = self.validator_wallet()
 				validator_account = self.validator_account(validator_wallet)
 				adnl_addr = self.mtc.GetAdnlAddr()
-				available_validator_balance = self.available_validator_balance(validator_account)
+				free_nominator_balance = self.free_nominator_balance(single_nominator)
+				free_validator_balance = self.free_validator_balance(validator_account)
 				stats = self.get_stats()
 				config15 = self.mtc.GetConfig15()
 				config34 = self.mtc.GetConfig34()
@@ -676,28 +660,29 @@ class Reporter(MTC):
 				# validation_started_at = self.validation_started_at(past_election_ids)
 				active_validator, validator_load = self.get_validator_load(validator_index, str(validation_started_at))
 				participate_in_curr_validation = self.participate_in_curr_validation(mytoncore_db, past_election_ids, adnl_addr, validator_index)
+				participate_in_next_validation = self.participate_in_next_validation(mytoncore_db, past_election_ids, adnl_addr)
 				min_prob = self.min_prob(active_validator, validator_load)
-				# sub_wallet_id = self.get_sub_wallet_id(validator_wallet)
-				last_reporter_pid = pid
+
+				self.update_start_work_time(participate_in_next_validation, past_election_ids[0])
 
 				self.metrics['validator_index'] = validator_index
 				self.metrics['adnl_addr'] = adnl_addr
-				self.metrics['available_validator_balance'] = available_validator_balance
+				self.metrics['free_validator_balance'] = free_validator_balance
+				self.metrics['free_nominator_balance'] = free_nominator_balance
 				self.metrics['local_stake'] = self.get_local_stake()
 				self.metrics['local_stake_percent'] = self.get_local_stake_percent()
 				self.metrics['out_of_sync'] = stats['outOfSync']
 				self.metrics['is_working'] = int(stats['isWorking'])
-				self.metrics['participate_in_next_validation'] = self.participate_in_next_validation(mytoncore_db, past_election_ids, adnl_addr)
+				self.metrics['participate_in_next_validation'] = participate_in_next_validation
 				self.metrics['participate_in_curr_validation'] = participate_in_curr_validation
 				self.metrics['active_election_id'] = self.active_election_id()
 				self.metrics['elections_ends_in'] = self.elections_ends_in(past_election_ids)
 				self.metrics['validations_ends_in'] = self.validation_ends_in(past_election_ids)
 				self.metrics['validation_started_at'] = validation_started_at
 				self.metrics['validation_end_at'] = validation_end_at
-				self.metrics['total_validator_balance'] = self.estimate_total_validator_balance(mytoncore_db, past_election_ids, adnl_addr, available_validator_balance)
-				self.metrics['roi'] = self.roi(self.metrics['total_validator_balance'])
-				self.metrics['apy'] = self.apy(self.metrics['roi'])
-				self.metrics['prev_cycle_apr'] = self.calc_prev_cycle_apr(self.metrics['total_validator_balance'])
+				self.metrics['total_validator_balance'] = self.estimate_total_validator_balance(mytoncore_db, past_election_ids, adnl_addr, free_validator_balance + free_nominator_balance)
+				self.metrics['roi'] = self.calc_roi(self.metrics['total_validator_balance'])
+				self.metrics['apy'] = self.calc_apy(self.metrics['roi'])
 				self.metrics['validator_load'] = validator_load
 				self.metrics['min_prob'] = min_prob
 				self.metrics['net_load_avg'], self.metrics['disk_load_pct_avg'], self.metrics['mem_load_avg'] = self.get_load_stats(mytoncore_db)
@@ -706,7 +691,7 @@ class Reporter(MTC):
 				self.metrics['num_stakers'] = num_stakers
 				self.metrics['reporter_pid'] = pid
 				self.metrics['validator_wallet_addr'] = validator_wallet.addrB64
-				self.metrics['single_nominator_hash'] = single_nominator.codeHash
+				self.metrics['single_nominator_hash'] = single_nominator.account.codeHash
 				self.metrics['update_time'] = time.time()
 
 				emergency_flags = {'exit_flags': dict(), 'recovery_flags': dict(), 'warning_flags': dict()}
@@ -746,7 +731,8 @@ class Reporter(MTC):
 				emergency_flags['recovery_flags']['net_load_avg_err'] = int(self.metrics['mem_load_avg'] > 400)
 
 				# warning flags
-				emergency_flags['warning_flags']['low_validator_balance'] = available_validator_balance < 25
+				emergency_flags['warning_flags']['low_validator_balance'] = free_validator_balance < 25
+				emergency_flags['warning_flags']['participate_in_curr_validation'] = bool(not participate_in_curr_validation)
 
 				self.emergency_update(emergency_flags)
 
