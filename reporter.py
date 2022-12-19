@@ -702,7 +702,6 @@ class Reporter(MTC):
 				self.metrics['min_prob'] = min_prob
 				self.metrics['net_load_avg'], self.metrics['disk_load_pct_avg'], self.metrics['mem_load_avg'] = self.get_load_stats(mytoncore_db)
 				self.metrics['total_stake'] = total_stake
-				# self.metrics['sub_wallet_id'] = sub_wallet_id
 				self.metrics['version'], self.metrics['capabilities'] = version, capabilities
 				self.metrics['num_stakers'] = num_stakers
 				self.metrics['reporter_pid'] = pid
