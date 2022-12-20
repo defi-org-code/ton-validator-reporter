@@ -316,6 +316,11 @@ class Reporter(MTC):
 		else:
 			return int((int(past_election_ids[0]) + int(self.const['validators_elected_for']) - time.time()) / 60)
 
+	def held_period_ends_in(self):
+		# return int(self.const['validators_elected_for'] + self.const['stake_held_for'] - (time.time() % (self.const['validators_elected_for'] + self.const['stake_held_for'])))
+		t = time.time()
+		return int((self.const['validators_elected_for'] * math.ceil(t / self.const['validators_elected_for']) + self.const['stake_held_for']) - t)
+
 	def validation_started_at(self, past_election_ids):
 
 		if float(past_election_ids[0]) > time.time():
@@ -362,7 +367,7 @@ class Reporter(MTC):
 		if time.time() < self.next_apy_update:
 			return self.apy
 		else:
-			self.next_apy_update = math.ceil(time.time() / self.const['validators_elected_for']) + self.const['stake_held_for'] + 630
+			self.next_apy_update = self.const['validators_elected_for'] * math.ceil(time.time() / self.const['validators_elected_for']) + self.const['stake_held_for'] + 630
 			self.apy = max(round(roi * self.SECONDS_IN_YEAR / (self.const['validators_elected_for'] * math.floor(time.time() / self.const['validators_elected_for']) - self.reporter_db['start_work_time']), 2), 0)
 
 	def get_validator_load(self, validator_id, election_id):
@@ -653,6 +658,7 @@ class Reporter(MTC):
 				validation_started_at = str(config34['startWorkTime'])
 				validation_end_at = str(config34['endWorkTime'])
 				past_election_ids = self.past_election_ids(mytoncore_db)
+				validations_ends_in = self.validation_ends_in(past_election_ids)
 				total_stake = self.get_total_stake(mytoncore_db)
 				num_stakers = self.get_num_stakers(mytoncore_db)
 				pid = self.get_pid()
@@ -677,9 +683,10 @@ class Reporter(MTC):
 				self.metrics['participate_in_curr_validation'] = participate_in_curr_validation
 				self.metrics['active_election_id'] = self.active_election_id()
 				self.metrics['elections_ends_in'] = self.elections_ends_in(past_election_ids)
-				self.metrics['validations_ends_in'] = self.validation_ends_in(past_election_ids)
+				self.metrics['validations_ends_in'] = validations_ends_in
 				self.metrics['validation_started_at'] = validation_started_at
 				self.metrics['validation_end_at'] = validation_end_at
+				self.metrics['held_period_ends_in'] = self.held_period_ends_in()
 				self.metrics['total_validator_balance'] = self.estimate_total_validator_balance(mytoncore_db, past_election_ids, adnl_addr, free_validator_balance + free_nominator_balance)
 				self.metrics['roi'] = self.calc_roi(self.metrics['total_validator_balance'])
 				self.metrics['apy'] = self.calc_apy(self.metrics['roi'])
