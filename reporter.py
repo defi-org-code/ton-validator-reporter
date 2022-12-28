@@ -312,7 +312,7 @@ class Reporter(MTC):
 		t = time.time()
 		return int(self.const['validators_elected_for'] * math.ceil(t / self.const['validators_elected_for']) - t)
 
-	def election_starts_in(self):
+	def elections_starts_in(self):
 		t = time.time()
 		return int(self.const['validators_elected_for'] * math.floor((t + self.const['validators_elected_for'] - self.const['elections_start_before']) / self.const['validators_elected_for']) + self.const['validators_elected_for'] - self.const['elections_start_before'] - t)
 
@@ -685,7 +685,7 @@ class Reporter(MTC):
 				self.metrics['validations_ends_in'] = self.validation_ends_in()
 				self.metrics['validation_started_at'] = validation_started_at
 				self.metrics['validation_end_at'] = validation_end_at
-				self.metrics['election_starts_in'] = self.election_starts_in()
+				self.metrics['elections_starts_in'] = self.elections_starts_in()
 				self.metrics['held_period_ends_in'] = self.held_period_ends_in()
 				self.metrics['total_validator_balance'] = self.estimate_total_validator_balance(mytoncore_db, past_election_ids, adnl_addr, free_validator_balance + free_nominator_balance)
 				self.metrics['roi'] = self.calc_roi(self.metrics['total_validator_balance'])
