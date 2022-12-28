@@ -319,7 +319,7 @@ class Reporter(MTC):
 	def held_period_ends_in(self):
 		# return int(self.const['validators_elected_for'] + self.const['stake_held_for'] - (time.time() % (self.const['validators_elected_for'] + self.const['stake_held_for'])))
 		t = time.time()
-		return int((self.const['validators_elected_for'] * math.ceil(t / self.const['validators_elected_for']) + self.const['stake_held_for']) - t)
+		return int(self.const['validators_elected_for'] * math.floor((t + self.const['stake_held_for']) / self.const['validators_elected_for']) + self.const['stake_held_for'] - t)
 
 	def validation_started_at(self, past_election_ids):
 
