@@ -133,9 +133,9 @@ class Reporter(MTC):
         self.reporter_db = self.load_json_from_file(self.DB_FILE)
 
         self.prev_offers = []
-        self.next_apy_update = 0
+        self.next_apy_update = self.const['validators_elected_for'] * math.ceil(time.time() / self.const['validators_elected_for']) + self.const['stake_held_for'] + 630
 
-        self.apy = self.reporter_db.get('apy', 0)
+        self.apy = self.reporter_db.get('apy', -1)
         self.balance_at_elector = self.reporter_db.get('balance_at_elector', 0)
         self.start_run_time = 0
 
@@ -431,7 +431,7 @@ class Reporter(MTC):
 
         self.log.info(f"roi={roi}, next_apy_update={self.next_apy_update}, apy={apy}, x={self.const['validators_elected_for'] * math.floor(self.start_run_time / self.const['validators_elected_for'])}")
 
-        if self.start_run_time > self.next_apy_update:
+        if self.start_run_time > self.next_apy_update or self.apy == -1:
             self.next_apy_update = self.const['validators_elected_for'] * math.ceil(self.start_run_time / self.const['validators_elected_for']) + self.const['stake_held_for'] + 630
             self.apy = max(round(
                 roi * self.SECONDS_IN_YEAR / (
