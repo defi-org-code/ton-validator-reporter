@@ -133,7 +133,8 @@ class Reporter(MTC):
         self.reporter_db = self.load_json_from_file(self.DB_FILE)
 
         self.prev_offers = []
-        self.next_apy_update = 0
+        self.next_apy_update = self.const['validators_elected_for'] * math.ceil(time.time() / self.const['validators_elected_for']) + self.const['stake_held_for'] + 630
+
         self.apy = self.reporter_db.get('apy', -1)
         self.balance_at_elector = self.reporter_db.get('balance_at_elector', -1)
         self.start_run_time = 0
@@ -420,7 +421,7 @@ class Reporter(MTC):
 
     def calc_apy(self, roi):
 
-        if not roi or not self.reporter_db.get('start_work_time'):
+        if roi <= 0 or not self.reporter_db.get('start_work_time'):
             return 0
 
         apy = round(
@@ -812,7 +813,7 @@ class Reporter(MTC):
                 emergency_flags['recovery_flags']['net_load_avg_err'] = int(self.metrics['mem_load_avg'] > 400)
 
                 # warning flags
-                emergency_flags['warning_flags']['low_validator_balance'] = free_validator_balance < 25
+                emergency_flags['warning_flags']['low_validator_balance'] = free_validator_balance < 100
                 emergency_flags['warning_flags']['participate_in_curr_validation'] = bool(not participate_in_curr_validation)
 
                 self.emergency_update(emergency_flags)
