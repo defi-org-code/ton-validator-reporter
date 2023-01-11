@@ -133,9 +133,8 @@ class Reporter(MTC):
         self.reporter_db = self.load_json_from_file(self.DB_FILE)
 
         self.prev_offers = []
-        self.next_apy_update = self.const['validators_elected_for'] * math.ceil(time.time() / self.const['validators_elected_for']) + self.const['stake_held_for'] + 630
 
-        self.apy = self.reporter_db.get('apy', -1)
+        self.apy = -1
         self.balance_at_elector = self.reporter_db.get('balance_at_elector', 0)
         self.start_run_time = 0
 
@@ -305,7 +304,9 @@ class Reporter(MTC):
 
     def get_balance_at_elector(self, adnl_addr, single_nominator, config34):
 
-        if self.start_run_time > self.next_apy_update:
+        next_update = self.const['validators_elected_for'] * math.ceil(self.start_run_time / self.const['validators_elected_for']) + self.const['stake_held_for'] + 630
+
+        if self.start_run_time > next_update:
             elector_addr = self.const['elector_addr']
             self.balance_at_elector = \
                 self.get_stake_in_election(elector_addr, adnl_addr) + \
@@ -429,17 +430,14 @@ class Reporter(MTC):
                     self.const['validators_elected_for'] * math.floor(self.start_run_time / self.const['validators_elected_for']) - int(self.reporter_db['start_work_time'])
             ), 2)
 
-        self.log.info(f"roi={roi}, next_apy_update={self.next_apy_update}, apy={apy}, x={self.const['validators_elected_for'] * math.floor(self.start_run_time / self.const['validators_elected_for'])}")
+        next_update = self.const['validators_elected_for'] * math.ceil(self.start_run_time / self.const['validators_elected_for']) + self.const['stake_held_for'] + 630
+        self.log.info(f"roi={roi}, next_update={next_update}, apy={apy}, x={self.const['validators_elected_for'] * math.floor(self.start_run_time / self.const['validators_elected_for'])}")
 
-        if self.start_run_time > self.next_apy_update or self.apy == -1:
-            self.next_apy_update = self.const['validators_elected_for'] * math.ceil(self.start_run_time / self.const['validators_elected_for']) + self.const['stake_held_for'] + 630
+        if self.start_run_time > next_update or self.apy == -1:
             self.apy = max(round(
                 roi * self.SECONDS_IN_YEAR / (
                         self.const['validators_elected_for'] * math.floor(self.start_run_time / self.const['validators_elected_for']) - int(self.reporter_db['start_work_time'])
                 ), 2), 0)
-
-            self.reporter_db['apy'] = self.apy
-            self.save_json_to_file(self.reporter_db, self.DB_FILE)
 
         return self.apy
 
