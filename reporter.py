@@ -499,6 +499,8 @@ class Reporter(MTC):
 
     def get_load_stats(self, mytoncore_db):
 
+        #TODO fix hack
+        return 0, 0, 0
         net_load_avg = mytoncore_db['statistics']['netLoadAvg'][1]
         sda_load_avg_pct = mytoncore_db['statistics']['disksLoadPercentAvg']['sda'][1]
         sdb_load_avg_pct = mytoncore_db['statistics']['disksLoadPercentAvg']['sdb'][1]
