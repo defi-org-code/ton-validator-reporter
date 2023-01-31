@@ -26,6 +26,7 @@ class MTC(object):
 
     def __init__(self):
         self.mtc = mytonctrl.MyTonCore()
+        self.mtc.Refresh()
 
     def get_validators_load(self, start, end):
 
