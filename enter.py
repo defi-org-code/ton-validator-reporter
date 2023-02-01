@@ -21,7 +21,7 @@ ton.SetSettings("stakePercent", stake_percent)
 print(f'setting usePool to true')
 ton.SetSettings("usePool", 'true')
 
-assert ton.GetSettings("stakePercent") is None, f'failed to set stakePercent to {stake_percent} (stakePercent={ton.GetSettings("stakePercent")})'
+assert ton.GetSettings("stakePercent") == 0, f'failed to set stakePercent to {stake_percent} (stakePercent={ton.GetSettings("stakePercent")})'
 assert ton.GetSettings("stake") == int(stake), f'failed to set stake to {stake} (stake={ton.GetSettings("stake")})'
 assert ton.GetSettings("usePool") == 'true', f'failed to set usePool to true (usePool={ton.GetSettings("usePool")})'
 
