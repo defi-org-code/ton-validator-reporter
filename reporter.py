@@ -12,6 +12,8 @@ import traceback
 from logging import Formatter, getLogger, StreamHandler
 import copy
 import math
+import requests
+import subprocess
 
 sys.path.append('/usr/src/mytonctrl')
 
@@ -706,6 +708,27 @@ class Reporter(MTC):
         with open(self.METRICS_FILE, 'w') as f:
             json.dump(self.metrics, f)
             self.log.info(f'{self.METRICS_FILE} was updated')
+            self.sendToElastic()    
+            self.log.info(f'{self.METRICS_FILE} posted to elastic')
+
+    def sendToElastic(self):
+     
+        url = 'http://3.141.233.132:3001/putes/sn-reporter';
+        headers = {'Content-Type': 'application/json'}
+        response = requests.open(url, headers=headers, data=json.dump(self.metrics))
+        self.log.info(response)
+
+    def getTonVersion(self):
+        directory ="/usr/src/ton"
+        command = ["git", "rev-pasre", "HEAD"]
+        result = subprocess.run(command, cwd=directory, stdout=subprocess.PIPE)
+        return result.stdout.decode().strip()
+
+    def getMytonctrlVersion(self):
+        directory ="/usr/src/mytonctrl"
+        command = ["git", "rev-pasre", "HEAD"]
+        result = subprocess.run(command, cwd=directory, stdout=subprocess.PIPE)
+        return result.stdout.decode().strip()
 
     def run(self):
         retry = 0
@@ -776,6 +799,9 @@ class Reporter(MTC):
                 self.metrics['validator_wallet_addr'] = validator_wallet.addrB64
                 self.metrics['single_nominator_hash'] = single_nominator.account.codeHash
                 self.metrics['update_time'] = self.start_run_time
+                self.metrics['hostname'] = socket.gethostname()
+                self.metrics['mytonctrl_version'] = self.getMytonctrlVersion()
+                self.metrics['ton_version'] = self.getTonVersion()
 
                 emergency_flags = {'exit_flags': dict(), 'recovery_flags': dict(), 'warning_flags': dict()}
 
