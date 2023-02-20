@@ -715,20 +715,31 @@ class Reporter(MTC):
      
         url = 'http://3.141.233.132:3001/putes/sn-reporter';
         headers = {'Content-Type': 'application/json'}
-        response = requests.open(url, headers=headers, data=json.dump(self.metrics))
+        response = requests.post(url, headers=headers, data=json.dump(self.metrics))
         self.log.info(response)
 
     def getTonVersion(self):
         directory ="/usr/src/ton"
-        command = ["git", "rev-pasre", "HEAD"]
+        command = ["git", "rev-parse", "HEAD"]
         result = subprocess.run(command, cwd=directory, stdout=subprocess.PIPE)
-        return result.stdout.decode().strip()
+        commit_hash = result.stdout.decode().strip()
+        branch = self.get_git_branch(directory)
+        return commit_hash+"-"+branch
 
     def getMytonctrlVersion(self):
         directory ="/usr/src/mytonctrl"
-        command = ["git", "rev-pasre", "HEAD"]
+        command = ["git", "rev-parse", "HEAD"]
         result = subprocess.run(command, cwd=directory, stdout=subprocess.PIPE)
-        return result.stdout.decode().strip()
+        commit_hash = result.stdout.decode().strip()
+        branch = self.get_git_branch(directory)
+        return commit_hash+"-"+branch
+
+    def get_git_branch(path=None):
+        if path is None:
+            path = os.path.curdir
+        command = 'git rev-parse --abbrev-ref HEAD'.split()
+        branch = subprocess.Popen(command, stdout=subprocess.PIPE, cwd=path).stdout.read()
+        return branch.strip().decode('utf-8') 
 
     def run(self):
         retry = 0
