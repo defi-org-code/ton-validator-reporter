@@ -715,8 +715,9 @@ class Reporter(MTC):
      
         url = 'http://3.141.233.132:3001/putes/sn-reporter';
         headers = {'Content-Type': 'application/json'}
-        response = requests.post(url, headers=headers, data=json.dump(self.metrics))
+        response = requests.post(url, headers=headers, data=json.dumps(self.metrics))
         self.log.info(response)
+        
 
     def getTonVersion(self):
         directory ="/usr/src/ton"
