@@ -734,7 +734,7 @@ class Reporter(MTC):
         branch = self.get_git_branch(directory)
         return commit_hash+"-"+branch
 
-    def get_git_branch(self, path=None):
+    def get_git_branch(self, path):
         if path is None:
             path = os.path.curdir
         command = 'git rev-parse --abbrev-ref HEAD'.split()
