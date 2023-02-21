@@ -778,8 +778,14 @@ class Reporter(MTC):
                 participate_in_curr_validation = self.participate_in_curr_validation(mytoncore_db, past_election_ids, adnl_addr, validator_index)
                 participate_in_next_validation = self.participate_in_next_validation(mytoncore_db, past_election_ids, adnl_addr)
                 min_prob = self.min_prob(active_validator, validator_load)
+                validator_load_not_updated = participate_in_curr_validation and not active_validator and float(validation_started_at) - self.start_run_time > 15
 
                 self.update_start_work_time(participate_in_next_validation, past_election_ids[0])
+
+                ###############################################################
+                # metrics
+                # general validator metrics
+                ###############################################################
 
                 self.metrics['validator_index'] = validator_index
                 self.metrics['adnl_addr'] = adnl_addr
@@ -817,42 +823,78 @@ class Reporter(MTC):
 
                 emergency_flags = {'exit_flags': dict(), 'recovery_flags': dict(), 'warning_flags': dict()}
 
-                # exit & recovery flags
-                validator_load_not_updated = participate_in_curr_validation and not active_validator and float(validation_started_at) - self.start_run_time > 15
-                emergency_flags['exit_flags']['validator_load'] = validator_load_not_updated
-                emergency_flags['recovery_flags']['validator_load'] = validator_load_not_updated
-                emergency_flags['exit_flags']['min_prob'] = min_prob < .1
-                emergency_flags['recovery_flags']['min_prob'] = min_prob < .1
-
+                ###############################################################
                 # exit flags
-                emergency_flags['exit_flags']['validator_wallet_not_exists'] = int(self.validator_wallet_exists() != 1)
-                emergency_flags['exit_flags']['validators_elected_for_changed'] = int(config15['validatorsElectedFor'] != self.const['validators_elected_for'])
-                emergency_flags['exit_flags']['elections_start_before_changed'] = int(config15['electionsStartBefore'] != self.const['elections_start_before'])
-                emergency_flags['exit_flags']['elections_end_before_changed'] = int(config15['electionsEndBefore'] != self.const['elections_end_before'])
-                emergency_flags['exit_flags']['stake_held_for_changed'] = int(config15['stakeHeldFor'] != self.const['stake_held_for'])
-                emergency_flags['exit_flags']['fine_changed'] = self.check_fine_changes(mytoncore_db)
-                emergency_flags['exit_flags']['single_nominator_code_changed'] = self.single_nominator_code_changed(single_nominator)
-                emergency_flags['exit_flags']['elector_addr_changed'] = self.elector_addr_changed()
-                emergency_flags['exit_flags']['config_addr_changed'] = self.config_addr_changed()
-                emergency_flags['exit_flags']['elector_code_changed'] = self.elector_code_changed()
-                emergency_flags['exit_flags']['config_code_changed'] = self.config_code_changed()
-                emergency_flags['exit_flags']['total_stake_reduced'] = self.total_stake_reduced(total_stake)
-                emergency_flags['exit_flags']['num_validators_reduced'] = self.num_validators_reduced(num_validators)
-                emergency_flags['exit_flags']['global_version_changed'] = self.global_version_changed(version, capabilities)
-                emergency_flags['exit_flags']['complaint_detected'] = int(self.detect_complaint(mytoncore_db, past_election_ids, adnl_addr) == 1)
-                # emergency_flags['exit_flags']['reporter_pid_changed'] = int(pid != last_reporter_pid)
-                # emergency_flags['exit_flags']['sub_wallet_id_err'] = int(sub_wallet_id != 698983190)
-                emergency_flags['exit_flags']['new_offers'] = self.new_offers()
+                # when set should trigger immediate exit from the next validation cycle
+                # reporter will initiate set stake 0 (and set stakePercent 0) 
+                ###############################################################
 
+                # verify validator wallet exists
+                emergency_flags['exit_flags']['validator_wallet_not_exists'] = int(self.validator_wallet_exists() != 1)
+                # verify validation cycle was not changed 
+                emergency_flags['exit_flags']['validators_elected_for_changed'] = int(config15['validatorsElectedFor'] != self.const['validators_elected_for'])
+                # verify start of election cycle before next validation was not changed 
+                emergency_flags['exit_flags']['elections_start_before_changed'] = int(config15['electionsStartBefore'] != self.const['elections_start_before'])
+                # verify end of election cycle before next validation was not changed 
+                emergency_flags['exit_flags']['elections_end_before_changed'] = int(config15['electionsEndBefore'] != self.const['elections_end_before'])
+                # verify freeze period was not changed 
+                emergency_flags['exit_flags']['stake_held_for_changed'] = int(config15['stakeHeldFor'] != self.const['stake_held_for'])
+                # verify network fine was not changed 
+                emergency_flags['exit_flags']['fine_changed'] = self.check_fine_changes(mytoncore_db)
+                # verify single nominator code hash was not changed 
+                emergency_flags['exit_flags']['single_nominator_code_changed'] = self.single_nominator_code_changed(single_nominator)
+                # verify elector address was not changed 
+                emergency_flags['exit_flags']['elector_addr_changed'] = self.elector_addr_changed()
+                # verify config address was not changed 
+                emergency_flags['exit_flags']['config_addr_changed'] = self.config_addr_changed()
+                # verify elector code hash address was not changed 
+                emergency_flags['exit_flags']['elector_code_changed'] = self.elector_code_changed()
+                # verify config code hash address was not changed 
+                emergency_flags['exit_flags']['config_code_changed'] = self.config_code_changed()
+                # verify total network stake was not reduced by more than 20% (relative to previous cycle)
+                emergency_flags['exit_flags']['total_stake_reduced'] = self.total_stake_reduced(total_stake)
+                # verify total number of valudators in the network was not reduced by more than 20% (relative to previous cycle)
+                emergency_flags['exit_flags']['num_validators_reduced'] = self.num_validators_reduced(num_validators)
+                # verify global version and network capabilities were not changed
+                emergency_flags['exit_flags']['global_version_changed'] = self.global_version_changed(version, capabilities)
+                # verify no one complaints about this validator
+                emergency_flags['exit_flags']['complaint_detected'] = int(self.detect_complaint(mytoncore_db, past_election_ids, adnl_addr) == 1)
+                # TODO: need to check this flag
+                # verify no new offers were submitted, new offers might influence and change some important network params
+                emergency_flags['exit_flags']['new_offers'] = self.new_offers()
+                # verify validator load is accessible. validator load reflects the load from validator work (e.g.: how many blocks were closed)  
+                emergency_flags['exit_flags']['validator_load'] = validator_load_not_updated
+                # verify validator is closing blocks with high probability (> 0.1) 
+                # min_prob is the probability the validator didn't close block for the given period (since the start of the validation cycle)
+                emergency_flags['exit_flags']['min_prob'] = min_prob < .1
+
+                ###############################################################
                 # recovery flags
+                # when set should trigger manual/automatic operation by the devops group operating the validator
+                # the operation might include for example restarting a process or checking that network connectivity is ok
+                # however it will not trigger exit from the next validating cycle
+                ###############################################################
+
+                # validator process is running
                 emergency_flags['recovery_flags']['systemctl_status_validator'] = int(self.systemctl_status_validator_ok() != 1)
+                # validator is not out of sunc (validator epoch relative to the network)
                 emergency_flags['recovery_flags']['out_of_sync_err'] = int(self.metrics['out_of_sync'] > 120)
+                # validator RAM should be < 85%
                 emergency_flags['recovery_flags']['mem_load_avg_err'] = int(self.metrics['mem_load_avg'] > 85)
+                # validator disk should be < 85%
                 emergency_flags['recovery_flags']['disk_load_pct_avg_err'] = int(self.metrics['mem_load_avg'] > 85)
+                # validator network load average should be < 400 MB/sec
                 emergency_flags['recovery_flags']['net_load_avg_err'] = int(self.metrics['mem_load_avg'] > 400)
 
+                ###############################################################
                 # warning flags
+                # general warnings that should be noticed and might require some actions from R&D team
+                # for example low validator balance should trigger sending funds to the validtor wallet
+                ###############################################################
+
+                # validator balance should be > 100 TON
                 emergency_flags['warning_flags']['low_validator_balance'] = free_validator_balance < 100
+                # validator should continuously participate in every validation cycle
                 emergency_flags['warning_flags']['participate_in_curr_validation'] = bool(not participate_in_curr_validation)
 
                 self.emergency_update(emergency_flags)
