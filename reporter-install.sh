@@ -93,6 +93,11 @@ echo "restarting ${SERVICE_NAME}.service"
 sudo systemctl daemon-reload
 sudo systemctl restart ${SERVICE_NAME}.service
 
+echo "owning directories for git purposes 'git config --global --add safe.directory /usr/src/ton'"
+echo "owning directories for git purposes 'git config --global --add safe.directory /usr/src/mytonctrl'"
+git config --global --add safe.directory /usr/src/ton
+git config --global --add safe.directory /usr/src/mytonctrl
+
 echo "enable ${SERVICE_NAME}.service on every boot"
 sudo systemctl enable ${SERVICE_NAME}.service
 
