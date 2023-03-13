@@ -485,7 +485,7 @@ class Reporter(MTC):
         if not active_validator:
             return self.MIN_PROB_NULL
 
-        return min(validator_load['mc_prob'], validator_load['wc_prob'])
+        return max(validator_load['mc_prob'], validator_load['wc_prob'])
 
     def check_fine_changes(self, mytoncore_db):
 
