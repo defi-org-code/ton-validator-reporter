@@ -102,7 +102,6 @@ class MTC(object):
                         item["var2"] = buff[2]
                         item["fileName"] = buff[3]
                 data[vid] = item
-
         return data
 
 
@@ -353,15 +352,9 @@ class Reporter(MTC):
     def participate_in_next_validation(self, mytoncore_db, past_election_ids, adnl_addr):
         return int(float(past_election_ids[0]) > self.start_run_time and self.participates_in_election_id(mytoncore_db, str(past_election_ids[0]), adnl_addr))
 
-    def participate_in_curr_validation(self, mytoncore_db, past_election_ids, adnl_addr, validator_index):
-
-        if validator_index == -1:
-            return 0
-
-        if float(past_election_ids[0]) < self.start_run_time:
-            return self.participates_in_election_id(mytoncore_db, str(past_election_ids[0]), adnl_addr)
-        else:
-            return self.participates_in_election_id(mytoncore_db, str(past_election_ids[1]), adnl_addr)
+    def participate_in_curr_validation(self, validators_load, validator_index):
+        self.log.info("---> validators_load: ", validators_load)
+        return int(validator_index in validators_load)
 
     def active_election_id(self):
         return self.mtc.GetActiveElectionId(self.const['elector_addr'])
@@ -456,7 +449,6 @@ class Reporter(MTC):
             start_time = end_time - 3 * 3600  # last 3 hours
 
         validators_load = self.get_validators_load(start_time, end_time)
-
         if validator_id not in validators_load.keys():
             return 0, {
                 'mc_blocks_created': -1,
@@ -467,7 +459,7 @@ class Reporter(MTC):
                 'wc_prob': -1,
                 'mr': -1,
                 'wr': -1,
-            }
+            }, validators_load
 
         return 1, {
             'mc_blocks_created': validators_load[validator_id]['masterBlocksCreated'],
@@ -478,14 +470,14 @@ class Reporter(MTC):
             'wc_prob': validators_load[validator_id]['workchainProb'],
             'mr': validators_load[validator_id]['mr'],
             'wr': validators_load[validator_id]['wr'],
-        }
+        }, validators_load
 
     def min_prob(self, active_validator, validator_load):
         # probability to close <= blocks_created blocks given th expected blocks to close are blocks_expected
         if not active_validator:
             return self.MIN_PROB_NULL
 
-        return max(validator_load['mc_prob'], validator_load['wc_prob'])
+        return min(validator_load['mc_prob'], validator_load['wc_prob'])
 
     def check_fine_changes(self, mytoncore_db):
 
@@ -611,6 +603,21 @@ class Reporter(MTC):
         return 0
 
     def detect_complaint(self, mytoncore_db, past_election_ids, adnl_addr):
+
+        if len(past_election_ids) == 0:
+            return -1
+
+        if len(past_election_ids) == 1:
+            election_id = past_election_ids[0]
+        else:
+            election_id = past_election_ids[0] if float(past_election_ids[0]) < self.start_run_time else past_election_ids[1]
+
+        if 'saveComplaints' not in mytoncore_db or election_id not in mytoncore_db['saveComplaints']:
+            return -1
+
+        return int(adnl_addr in mytoncore_db['saveComplaints'][election_id].keys())
+
+    def _detect_complaint(self, mytoncore_db, past_election_ids, adnl_addr):
 
         election_id = past_election_ids[0] if float(past_election_ids[0]) < self.start_run_time else past_election_ids[1]
         if 'saveComplaints' not in mytoncore_db or election_id not in mytoncore_db['saveComplaints']:
@@ -774,8 +781,8 @@ class Reporter(MTC):
                 pid = self.get_pid()
                 version, capabilities = self.get_global_version()
                 # validation_started_at = self.validation_started_at(past_election_ids)
-                active_validator, validator_load = self.get_validator_load(validator_index, str(validation_started_at))
-                participate_in_curr_validation = self.participate_in_curr_validation(mytoncore_db, past_election_ids, adnl_addr, validator_index)
+                active_validator, validator_load, validators_load_tmp = self.get_validator_load(validator_index, str(validation_started_at))
+                participate_in_curr_validation = self.participate_in_curr_validation(validators_load_tmp, validator_index)
                 participate_in_next_validation = self.participate_in_next_validation(mytoncore_db, past_election_ids, adnl_addr)
                 min_prob = self.min_prob(active_validator, validator_load)
                 validator_load_not_updated = participate_in_curr_validation and not active_validator and float(validation_started_at) - self.start_run_time > 15
