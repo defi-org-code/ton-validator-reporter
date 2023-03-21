@@ -873,7 +873,7 @@ class Reporter(MTC):
                 emergency_flags['exit_flags']['validator_load'] = validator_load_not_updated
                 # verify validator is closing blocks with high probability (> 0.1) 
                 # min_prob is the probability the validator didn't close block for the given period (since the start of the validation cycle)
-                emergency_flags['exit_flags']['min_prob'] = min_prob < .1
+                emergency_flags['warning_flags']['min_prob'] = min_prob < .1
 
                 ###############################################################
                 # recovery flags
