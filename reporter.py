@@ -781,8 +781,8 @@ class Reporter(MTC):
                 pid = self.get_pid()
                 version, capabilities = self.get_global_version()
                 # validation_started_at = self.validation_started_at(past_election_ids)
-                active_validator, validator_load, validators_load_tmp = self.get_validator_load(validator_index, str(validation_started_at))
-                participate_in_curr_validation = self.participate_in_curr_validation(validators_load_tmp, validator_index)
+                active_validator, validator_load, validators_load_full = self.get_validator_load(validator_index, str(validation_started_at))
+                participate_in_curr_validation = self.participate_in_curr_validation(validators_load_full, validator_index)
                 participate_in_next_validation = self.participate_in_next_validation(mytoncore_db, past_election_ids, adnl_addr)
                 min_prob = self.min_prob(active_validator, validator_load)
                 validator_load_not_updated = participate_in_curr_validation and not active_validator and float(validation_started_at) - self.start_run_time > 15
