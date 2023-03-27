@@ -23,6 +23,7 @@ from mytoncore import GetMemoryInfo
 
 local = MyPyClass(__file__)
 
+REPORTER_VERSION = '2.0.0'
 
 class MTC(object):
 
@@ -353,7 +354,10 @@ class Reporter(MTC):
         return int(float(past_election_ids[0]) > self.start_run_time and self.participates_in_election_id(mytoncore_db, str(past_election_ids[0]), adnl_addr))
 
     def participate_in_curr_validation(self, validators_load, validator_index):
-        self.log.info("---> validators_load: ", validators_load)
+        #self.log.info("---> validators_load: ", validators_load)
+        if(len(validators_load) == 0):
+            # if validators_load  is empty then assume you are participating in current validation, otherwise you we will send false alerts every now and then
+            return 1
         return int(validator_index in validators_load)
 
     def active_election_id(self):
@@ -794,6 +798,8 @@ class Reporter(MTC):
                 # general validator metrics
                 ###############################################################
 
+                self.metrics["reporter_version"] = REPORTER_VERSION
+                self.metrics['validator_index'] = validator_index
                 self.metrics['validator_index'] = validator_index
                 self.metrics['adnl_addr'] = adnl_addr
                 self.metrics['free_validator_balance'] = free_validator_balance
