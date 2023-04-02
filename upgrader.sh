@@ -8,6 +8,6 @@ echo 'uninstall reporter completed'
 rm reporter-install.sh
 wget https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/reporter-install.sh
 chmod +x reporter-install.sh
-sudo ./reporter-install.sh 
+./reporter-install.sh 
 
 echo 'install and upgrader reporter completed , run systemctl status reporter'
