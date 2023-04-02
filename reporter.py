@@ -23,7 +23,7 @@ from mytoncore import GetMemoryInfo
 
 local = MyPyClass(__file__)
 
-REPORTER_VERSION = '2.0.0'
+REPORTER_VERSION = '2.0.1'
 
 class MTC(object):
 
@@ -874,7 +874,7 @@ class Reporter(MTC):
                 emergency_flags['exit_flags']['complaint_detected'] = int(self.detect_complaint(mytoncore_db, past_election_ids, adnl_addr) == 1)
                 # TODO: need to check this flag
                 # verify no new offers were submitted, new offers might influence and change some important network params
-                emergency_flags['exit_flags']['new_offers'] = self.new_offers()
+                emergency_flags['warning_flags']['new_offers'] = self.new_offers()
                 # verify validator load is accessible. validator load reflects the load from validator work (e.g.: how many blocks were closed)  
                 emergency_flags['exit_flags']['validator_load'] = validator_load_not_updated
                 # verify validator is closing blocks with high probability (> 0.1) 
