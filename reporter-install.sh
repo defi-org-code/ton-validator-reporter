@@ -87,6 +87,9 @@ cp 'exit.py' ${SRC_DIR}
 echo "adding enter script to ${SRC_DIR}"
 cp 'enter.py' ${SRC_DIR}
 
+echo "adding enter script to ${SRC_DIR}"
+cp 'restake.py' ${SRC_DIR}
+
 echo "adding reset_emergency script to ${SRC_DIR}"
 cp 'reset_emergency.py' ${SRC_DIR}
 
