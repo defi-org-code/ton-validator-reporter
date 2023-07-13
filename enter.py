@@ -26,7 +26,9 @@ assert ton.GetSettings("stake") == int(stake), f'failed to set stake to {stake} 
 assert ton.GetSettings("usePool") is True, f'failed to set usePool to true (usePool={ton.GetSettings("usePool")})'
 
 # Append stake to file
-with open('last-stake', 'w') as f:
-    f.write(f'{stake}\n')
+
+if stake != 0:
+    with open('last-stake', 'w') as f:
+        f.write(f'{stake}\n')
 
 print('all done')
