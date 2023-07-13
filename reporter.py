@@ -23,7 +23,7 @@ from mytoncore import GetMemoryInfo
 
 local = MyPyClass(__file__)
 
-REPORTER_VERSION = '2.0.1'
+REPORTER_VERSION = '2.0.2'
 
 class MTC(object):
 
