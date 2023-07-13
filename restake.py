@@ -3,7 +3,7 @@ import sys
 import subprocess
 
 # The path to the enterstake script
-ENTERSTAKE_PATH = './enter.py'  # You need to replace this with the actual path
+ENTERSTAKE_PATH = '/usr/src/enter.py'  # You need to replace this with the actual path
 
 def get_last_stake():
     try:
