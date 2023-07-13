@@ -19,6 +19,7 @@ REPORTER_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validato
 VALIDATOR_REPORTER_SERVICE_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/${SERVICE_NAME}.service
 EXIT_STAKE_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/exit.py
 ENTER_STAKE_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/enter.py
+RE_STAKE_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/restake.py
 RESET_EMERGENCY_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/reset_emergency.py
 CONSTANTS_DESCRIPTOR=https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/master/constants.json
 
@@ -64,6 +65,9 @@ wget "${EXIT_STAKE_DESCRIPTOR}"
 
 echo "Downloading enter script ..."
 wget "${ENTER_STAKE_DESCRIPTOR}"
+
+echo "Downloading re-enter script ..."
+wget "${RE_STAKE_DESCRIPTOR}"
 
 echo "Downloading reset_emergency script ..."
 wget "${RESET_EMERGENCY_DESCRIPTOR}"
