@@ -23,7 +23,7 @@ from mytoncore import GetMemoryInfo
 
 local = MyPyClass(__file__)
 
-REPORTER_VERSION = '2.0.2'
+REPORTER_VERSION = '2.1.0'
 
 class MTC(object):
 
@@ -867,7 +867,7 @@ class Reporter(MTC):
                 # verify total network stake was not reduced by more than 20% (relative to previous cycle)
                 emergency_flags['exit_flags']['total_stake_reduced'] = self.total_stake_reduced(total_stake)
                 # verify total number of valudators in the network was not reduced by more than 20% (relative to previous cycle)
-                emergency_flags['exit_flags']['num_validators_reduced'] = self.num_validators_reduced(num_validators)
+                emergency_flags['warning_flags']['num_validators_reduced'] = self.num_validators_reduced(num_validators)
                 # verify global version and network capabilities were not changed
                 emergency_flags['exit_flags']['global_version_changed'] = self.global_version_changed(version, capabilities)
                 # verify no one complaints about this validator
