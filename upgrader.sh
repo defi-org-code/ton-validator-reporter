@@ -20,7 +20,5 @@ wget https://raw.githubusercontent.com/defi-org-code/ton-validator-reporter/mast
 chmod +x reporter-install.sh
 ./reporter-install.sh 
 
-echo 'resotre exit.py'
-mv /usr/src/reporter/_exit.py  /usr/src/reporter/exit.py
 
 echo 'install and upgrader reporter completed , run systemctl status reporter'
