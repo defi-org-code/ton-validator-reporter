@@ -28,7 +28,7 @@ assert ton.GetSettings("usePool") is True, f'failed to set usePool to true (useP
 # Append stake to file
 
 if stake != 0:
-    with open('last-stake', 'w') as f:
+    with open('/home/ubuntu/last-stake', 'w') as f:
         f.write(f'{stake}\n')
 
 print('all done')

@@ -23,7 +23,7 @@ from mytoncore import GetMemoryInfo
 
 local = MyPyClass(__file__)
 
-REPORTER_VERSION = '2.1.0'
+REPORTER_VERSION = '2.1.1'
 
 class MTC(object):
 
@@ -711,8 +711,8 @@ class Reporter(MTC):
 
         self.save_json_to_file(emergency_flags, self.EMERGENCY_FLAGS_FILE)
 
-        if emergency_flags['exit']:
-            self.exit_next_elections()
+        # if emergency_flags['exit']:
+        #     self.exit_next_elections()
 
     def report(self):
 
