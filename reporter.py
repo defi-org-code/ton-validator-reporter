@@ -23,7 +23,7 @@ from mytoncore import GetMemoryInfo
 
 local = MyPyClass(__file__)
 
-REPORTER_VERSION = '2.1.1'
+REPORTER_VERSION = '2.2.0'
 
 class MTC(object):
 
@@ -172,9 +172,12 @@ class Reporter(MTC):
             self.log.info(f'{file_name} was updated')
 
     def write_metrics_to_file(self, key, value):
+        if not self.metrics:
+            self.log.info('self.metrics is null or empty. Skipping write metrics.json file  operation.')
+            return
 
         self.metrics[key] = value
-        self.log.info(f'writing {key} with value {value} to metrics file at {self.METRICS_FILE}')
+        self.log.info(f'writing {key} with value {value} to metrics file at {self.METRICS_FILE} ')
 
         with open(self.METRICS_FILE, 'w') as f:
             json.dump(self.metrics, f)
