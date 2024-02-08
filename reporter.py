@@ -725,12 +725,20 @@ class Reporter(MTC):
             self.sendToElastic()    
             self.log.info(f'{self.METRICS_FILE} posted to elastic')
 
-    def sendToElastic(self):
-        self.log.info("Sending elastic")
-        url = 'http://3.141.233.132:3001/putes/sn-reporter';
-        headers = {'Content-Type': 'application/json'}
-        response = requests.post(url, headers=headers, data=json.dumps(self.metrics))
-        self.log.info(response)
+    def sendToElastic(self, timeout_duration=10):
+        try:
+            self.log.info("Sending to Elastic")
+            url = 'http://3.141.233.132:3001/putes/sn-reporter'
+            headers = {'Content-Type': 'application/json'}
+            # Add the timeout parameter to the request
+            response = requests.post(url, headers=headers, data=json.dumps(self.metrics), timeout=timeout_duration)
+            self.log.info(response)
+        except requests.exceptions.Timeout:
+            # Handle the timeout exception
+            self.log.info(f"Request to Elastic timed out after {timeout_duration} seconds")
+        except requests.exceptions.RequestException as e:
+            # Handle other possible exceptions
+            self.log.info(f"An error occurred while sending to Elastic: {e}")
 
 
     def getTonVersion(self):
