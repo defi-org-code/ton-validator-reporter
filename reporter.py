@@ -15,21 +15,25 @@ import math
 import requests
 import subprocess
 
-sys.path.append('/usr/src/mytonctrl')
+sys.path.append('/usr/src/mytonctrl/mytonctrl')
+sys.path.append('/usr/src/mytoncore/mytoncore')
 
 import mytonctrl
 from mypylib.mypylib import *
-from mytoncore import GetMemoryInfo
+from mytoncore.mytoncore import MyTonCore
 
-local = MyPyClass(__file__)
 
-REPORTER_VERSION = '2.2.0'
+REPORTER_VERSION = '3.0.0'
 
 class MTC(object):
 
     def __init__(self):
-        self.mtc = mytonctrl.MyTonCore()
-        self.mtc.ton = mytonctrl.MyTonCore()
+
+        mytoncore_local = MyPyClass('mytoncore.py')
+        self.mtc = MyTonCore(mytoncore_local)
+        self.mtc.ton = MyTonCore(mytoncore_local)
+        #self.mtc = mytonctrl.MyTonCore()
+        #self.mtc.ton = mytonctrl.MyTonCore()
 
     def get_validators_load(self, start, end):
 
@@ -318,9 +322,9 @@ class Reporter(MTC):
                 self.get_stake_in_election(elector_addr, adnl_addr) + \
                 self.get_stake_in_validation(adnl_addr, config34, elector_addr) + \
                 self.get_unfreeze_stake(elector_addr, single_nominator)
-            # + self.get_freeze_stake(mytoncore_db, adnl_addr) 
+            # + self.get_freeze_stake(mytoncore_db, adnl_addr)
             # self.log.info(f'balance_at_elector: {self.balance_at_elector}')
- 
+
             self.reporter_db['balance_at_elector'] = self.balance_at_elector
             self.save_json_to_file(self.reporter_db, self.DB_FILE)
 
@@ -503,15 +507,6 @@ class Reporter(MTC):
 
         #TODO fix hack
         return 0, 0, 0
-        net_load_avg = mytoncore_db['statistics']['netLoadAvg'][1]
-        sda_load_avg_pct = mytoncore_db['statistics']['disksLoadPercentAvg']['sda'][1]
-        sdb_load_avg_pct = mytoncore_db['statistics']['disksLoadPercentAvg']['sdb'][1]
-        disk_load_pct_avg = max(sda_load_avg_pct, sdb_load_avg_pct)
-
-        mem_info = GetMemoryInfo()
-        mem_load_avg = mem_info['usagePercent']
-
-        return net_load_avg, disk_load_pct_avg, mem_load_avg
 
     def elector_addr_changed(self):
 
@@ -722,7 +717,7 @@ class Reporter(MTC):
         with open(self.METRICS_FILE, 'w') as f:
             json.dump(self.metrics, f)
             self.log.info(f'{self.METRICS_FILE} was updated')
-            self.sendToElastic()    
+            self.sendToElastic()
             self.log.info(f'{self.METRICS_FILE} posted to elastic')
 
     def sendToElastic(self, timeout_duration=10):
@@ -762,7 +757,7 @@ class Reporter(MTC):
             path = os.path.curdir
         command = 'git rev-parse --abbrev-ref HEAD'.split()
         branch = subprocess.Popen(command, stdout=subprocess.PIPE, cwd=path).stdout.read()
-        return branch.strip().decode('utf-8') 
+        return branch.strip().decode('utf-8')
 
     def run(self):
         retry = 0
@@ -850,30 +845,30 @@ class Reporter(MTC):
                 ###############################################################
                 # exit flags
                 # when set should trigger immediate exit from the next validation cycle
-                # reporter will initiate set stake 0 (and set stakePercent 0) 
+                # reporter will initiate set stake 0 (and set stakePercent 0)
                 ###############################################################
 
                 # verify validator wallet exists
                 emergency_flags['exit_flags']['validator_wallet_not_exists'] = int(self.validator_wallet_exists() != 1)
-                # verify validation cycle was not changed 
+                # verify validation cycle was not changed
                 emergency_flags['exit_flags']['validators_elected_for_changed'] = int(config15['validatorsElectedFor'] != self.const['validators_elected_for'])
-                # verify start of election cycle before next validation was not changed 
+                # verify start of election cycle before next validation was not changed
                 emergency_flags['exit_flags']['elections_start_before_changed'] = int(config15['electionsStartBefore'] != self.const['elections_start_before'])
-                # verify end of election cycle before next validation was not changed 
+                # verify end of election cycle before next validation was not changed
                 emergency_flags['exit_flags']['elections_end_before_changed'] = int(config15['electionsEndBefore'] != self.const['elections_end_before'])
-                # verify freeze period was not changed 
+                # verify freeze period was not changed
                 emergency_flags['exit_flags']['stake_held_for_changed'] = int(config15['stakeHeldFor'] != self.const['stake_held_for'])
-                # verify network fine was not changed 
+                # verify network fine was not changed
                 emergency_flags['exit_flags']['fine_changed'] = self.check_fine_changes(mytoncore_db)
-                # verify single nominator code hash was not changed 
+                # verify single nominator code hash was not changed
                 emergency_flags['exit_flags']['single_nominator_code_changed'] = self.single_nominator_code_changed(single_nominator)
-                # verify elector address was not changed 
+                # verify elector address was not changed
                 emergency_flags['exit_flags']['elector_addr_changed'] = self.elector_addr_changed()
-                # verify config address was not changed 
+                # verify config address was not changed
                 emergency_flags['exit_flags']['config_addr_changed'] = self.config_addr_changed()
-                # verify elector code hash address was not changed 
+                # verify elector code hash address was not changed
                 emergency_flags['exit_flags']['elector_code_changed'] = self.elector_code_changed()
-                # verify config code hash address was not changed 
+                # verify config code hash address was not changed
                 emergency_flags['exit_flags']['config_code_changed'] = self.config_code_changed()
                 # verify total network stake was not reduced by more than 20% (relative to previous cycle)
                 emergency_flags['exit_flags']['total_stake_reduced'] = self.total_stake_reduced(total_stake)
@@ -886,9 +881,9 @@ class Reporter(MTC):
                 # TODO: need to check this flag
                 # verify no new offers were submitted, new offers might influence and change some important network params
                 emergency_flags['warning_flags']['new_offers'] = self.new_offers()
-                # verify validator load is accessible. validator load reflects the load from validator work (e.g.: how many blocks were closed)  
+                # verify validator load is accessible. validator load reflects the load from validator work (e.g.: how many blocks were closed)
                 emergency_flags['exit_flags']['validator_load'] = validator_load_not_updated
-                # verify validator is closing blocks with high probability (> 0.1) 
+                # verify validator is closing blocks with high probability (> 0.1)
                 # min_prob is the probability the validator didn't close block for the given period (since the start of the validation cycle)
                 emergency_flags['warning_flags']['min_prob'] = min_prob < .1
 
