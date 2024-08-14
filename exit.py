@@ -1,13 +1,16 @@
 import sys
 
-sys.path.append('/usr/src/mytonctrl')
+sys.path.append('/usr/src/mytonctrl/mytonctrl')
+sys.path.append('/usr/src/mytoncore/mytoncore')
 
 import mytonctrl
 from mypylib.mypylib import *
+from mytoncore.mytoncore import MyTonCore
 
 print('Exit script started')
 
-ton = mytonctrl.MyTonCore()
+mytoncore_local = MyPyClass('mytoncore.py')
+ton = MyTonCore(mytoncore_local)
 
 print('setting stake to 0')
 ton.SetSettings("stake", 0)

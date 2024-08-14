@@ -1,16 +1,20 @@
 #!/usr/bin/python3 -u
 import sys
 
-sys.path.append('/usr/src/mytonctrl')
+sys.path.append('/usr/src/mytonctrl/mytonctrl')
+sys.path.append('/usr/src/mytoncore/mytoncore')
 
 assert len(sys.argv) == 2, 'please provide stake amount'
 
 import mytonctrl
 from mypylib.mypylib import *
+from mytoncore.mytoncore import MyTonCore
 
 print('Enter script started')
 
+mytoncore_local = MyPyClass('mytoncore.py')
 ton = mytonctrl.MyTonCore()
+ton = MyTonCore(mytoncore_local)
 stake = sys.argv[1]
 stake_percent = 0
 
