@@ -13,7 +13,6 @@ from mytoncore.mytoncore import MyTonCore
 print('Enter script started')
 
 mytoncore_local = MyPyClass('mytoncore.py')
-ton = mytonctrl.MyTonCore()
 ton = MyTonCore(mytoncore_local)
 stake = sys.argv[1]
 stake_percent = 0
