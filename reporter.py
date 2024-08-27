@@ -23,7 +23,7 @@ from mypylib.mypylib import *
 from mytoncore.mytoncore import MyTonCore
 
 
-REPORTER_VERSION = '3.0.2'
+REPORTER_VERSION = '3.0.3'
 
 class MTC(object):
 
@@ -887,7 +887,7 @@ class Reporter(MTC):
                 # verify total number of valudators in the network was not reduced by more than 20% (relative to previous cycle)
                 emergency_flags['warning_flags']['num_validators_reduced'] = self.num_validators_reduced(num_validators)
                 # verify global version and network capabilities were not changed
-                emergency_flags['exit_flags']['global_version_changed'] = self.global_version_changed(version, capabilities)
+                emergency_flags['warning_flags']['global_version_changed'] = self.global_version_changed(version, capabilities)
                 # verify no one complaints about this validator
                 emergency_flags['exit_flags']['complaint_detected'] = int(self.detect_complaint(mytoncore_db, past_election_ids, adnl_addr) == 1)
                 # TODO: need to check this flag
