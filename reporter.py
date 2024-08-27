@@ -212,7 +212,7 @@ class Reporter(MTC):
         return int(socket.gethostname() == f'validator-{wallet_id}')
 
     def get_sub_wallet_id(self, wallet):
-        res = self.mtc.liteClient.Run(f'runmethod {wallet.addrB64} wallet_id')
+        res = self.run_with_retry(f'runmethod {wallet.addrB64} wallet_id')
         res = self.mtc.GetVarFromWorkerOutput(res, "result")
         self.log.info('res: ', res)
 
@@ -244,15 +244,27 @@ class Reporter(MTC):
     def free_validator_balance(self, validator_account):
         return validator_account.balance
 
+    def run_with_retry(self, cmd, max_retries=3, timeout=30):
+        for attempt in range(max_retries):
+            try:
+                result = self.mtc.liteClient.Run(cmd, timeout=timeout)
+                return result
+            except Exception as e:
+                self.log.warning(f"Attempt {attempt + 1} failed: {e}")
+                if attempt == max_retries - 1:
+                    self.log.error(f"All {max_retries} attempts failed for command: {cmd}")
+                    raise
+                time.sleep(2 ** attempt)
+
     def get_elector_total_stake(self, elector_addr):
         cmd = "runmethodfull {fullElectorAddr} past_elections".format(fullElectorAddr=elector_addr)
-        result = self.mtc.liteClient.Run(cmd)
+        result = self.run_with_retry(cmd)
         result = self.mtc.Result2List(result)
         return result[0][0][5]
 
     def get_stake_in_election(self, elector_addr, adnl_addr):
         cmd = "runmethodfull {fullElectorAddr} participant_list_extended".format(fullElectorAddr=elector_addr)
-        result = self.mtc.liteClient.Run(cmd)
+        result = self.run_with_retry(cmd)
         # self.log.info(f'get_stake_in_election: result={result}')
         rawElectionEntries = self.mtc.Result2List(result)
         # self.log.info(f'rawElectionEntries={rawElectionEntries}')
@@ -300,7 +312,7 @@ class Reporter(MTC):
     def get_unfreeze_stake(self, elector_addr, single_nominator):
         # compute_returned_stake
         cmd = "runmethodfull {fullElectorAddr} compute_returned_stake 0x{single_nominator_addr}".format(fullElectorAddr=elector_addr, single_nominator_addr=single_nominator.addr)
-        result = self.mtc.liteClient.Run(cmd)
+        result = self.run_with_retry(cmd)
         res = self.mtc.Result2List(result)
         self.log.info(f'get_unfreeze_stake: res: {res}')
         return res[0]
