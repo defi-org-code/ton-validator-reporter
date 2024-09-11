@@ -502,6 +502,21 @@ class Reporter(MTC):
 
         return min(validator_load['mc_prob'], validator_load['wc_prob'])
 
+
+    def find_myself(self, validators: list) -> dict:
+        adnl_addr = self.mtc.GetAdnlAddr()
+        for validator in validators:
+            if validator.get("adnlAddr") == adnl_addr:
+                return validator
+        return None
+    
+    
+    def check_efficiency(self):
+
+        validators = self.mtc.GetValidatorsList()
+        validator = self.find_myself(validators)        
+        return (validator.get('efficiency') , validator.blocks_created, validator.blocks_expected)
+
     def check_fine_changes(self, mytoncore_db):
 
         if 'saveComplaints' not in mytoncore_db:
@@ -851,6 +866,7 @@ class Reporter(MTC):
                 self.metrics['hostname'] = socket.gethostname()
                 self.metrics['mytonctrl_version'] = self.getMytonctrlVersion()
                 self.metrics['ton_version'] = self.getTonVersion()
+                self.metrics['efficiency'], self.metrics['blocks_created'], self.metrics['blocks_expected'] = self.check_efficiency()
 
                 emergency_flags = {'exit_flags': dict(), 'recovery_flags': dict(), 'warning_flags': dict()}
 
