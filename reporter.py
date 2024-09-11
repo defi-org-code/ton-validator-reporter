@@ -23,7 +23,7 @@ from mypylib.mypylib import *
 from mytoncore.mytoncore import MyTonCore
 
 
-REPORTER_VERSION = '3.0.4'
+REPORTER_VERSION = '3.0.5'
 
 class MTC(object):
 
@@ -739,6 +739,29 @@ class Reporter(MTC):
         # if emergency_flags['exit']:
         #     self.exit_next_elections()
 
+    def send_telegram_alert(self, message):
+        try:
+            telegram_bot_token = "7282059780:AAHpZb2ReWgFICwOesKEvtJxqlgqL79CO94"
+            telegram_chat_id = -4594555686
+            if telegram_bot_token and telegram_chat_id:
+                url = f"https://api.telegram.org/bot{telegram_bot_token}/sendMessage"
+                params = {
+                    "chat_id": telegram_chat_id,
+                    "text": message,
+                    "parse_mode": "markdown",
+                    "disable_web_page_preview": "true"
+                }
+                response = requests.get(url, params=params)
+                if response.status_code == 200:
+                    self.log.info("Telegram alert sent successfully")
+                else:
+                    self.log.error(f"Failed to send Telegram alert. Status code: {response.status_code}")
+            else:
+                self.log.warning("Telegram bot token or chat ID not configured. Skipping alert.")
+        except Exception as e:
+            self.log.error(f"Error sending Telegram alert: {str(e)}")
+
+    
     def report(self):
 
         with open(self.METRICS_FILE, 'w') as f:
@@ -904,8 +927,9 @@ class Reporter(MTC):
                 emergency_flags['warning_flags']['num_validators_reduced'] = self.num_validators_reduced(num_validators)
                 # verify global version and network capabilities were not changed
                 emergency_flags['warning_flags']['global_version_changed'] = self.global_version_changed(version, capabilities)
+                validatorHasComplaint = int(self.detect_complaint(mytoncore_db, past_election_ids, adnl_addr) == 1)
                 # verify no one complaints about this validator
-                emergency_flags['exit_flags']['complaint_detected'] = int(self.detect_complaint(mytoncore_db, past_election_ids, adnl_addr) == 1)
+                emergency_flags['exit_flags']['complaint_detected'] = validatorHasComplaint
                 # TODO: need to check this flag
                 # verify no new offers were submitted, new offers might influence and change some important network params
                 emergency_flags['warning_flags']['new_offers'] = self.new_offers()
@@ -944,11 +968,16 @@ class Reporter(MTC):
                 # validator should continuously participate in every validation cycle
                 emergency_flags['warning_flags']['participate_in_curr_validation'] = bool(not participate_in_curr_validation)
 
+                if validatorHasComplaint:
+                    self.send_telegram_alert(f"Complaint detected for validator with ADNL address: {adnl_addr} Hostname: {socket.gethostname()}")
+    
                 self.emergency_update(emergency_flags)
 
                 self.report()
 
                 self.log.info(self.metrics)
+
+                # self.send_telegram_alert(f"Metrics reported for validator with ADNL address: {adnl_addr} Hostname: {socket.gethostname()}")
 
             except Exception as e:
                 retry += 1
