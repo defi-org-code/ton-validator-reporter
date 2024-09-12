@@ -515,6 +515,8 @@ class Reporter(MTC):
 
         validators = self.mtc.GetValidatorsList()
         validator = self.find_myself(validators)        
+        if validator is None:
+            return (0, 0, 0)
         return (validator.get('efficiency') , validator.blocks_created, validator.blocks_expected)
 
     def check_fine_changes(self, mytoncore_db):
