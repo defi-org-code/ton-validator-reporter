@@ -23,7 +23,7 @@ from mypylib.mypylib import *
 from mytoncore.mytoncore import MyTonCore
 
 
-REPORTER_VERSION = '3.0.5'
+REPORTER_VERSION = '3.0.6'
 
 class MTC(object):
 
