@@ -524,6 +524,9 @@ class Reporter(MTC):
         if 'saveComplaints' not in mytoncore_db:
             return 0
 
+        if len (mytoncore_db['saveComplaints'].keys()) == 0:
+            return 0
+
         complaints_hash = []
         last_reported_election = sorted(mytoncore_db['saveComplaints'].keys(), reverse=True)[0]
         for complaint_hash, complaints_values in mytoncore_db['saveComplaints'][last_reported_election].items():
