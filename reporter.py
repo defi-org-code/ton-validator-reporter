@@ -528,7 +528,10 @@ class Reporter(MTC):
             return 0
 
         complaints_hash = []
-        last_reported_election = sorted(mytoncore_db['saveComplaints'].keys(), reverse=True)[0]
+        if 'saveComplaints' in mytoncore_db and mytoncore_db['saveComplaints']:
+            last_reported_election = sorted(mytoncore_db['saveComplaints'].keys(), reverse=True)[0]
+        else:
+            last_reported_election = None
         for complaint_hash, complaints_values in mytoncore_db['saveComplaints'][last_reported_election].items():
             if complaints_values['suggestedFine'] != self.const['suggested_fine'] or complaints_values['suggestedFinePart'] != self.const['suggested_fine_part']:
                 complaints_hash.append(complaint_hash)
