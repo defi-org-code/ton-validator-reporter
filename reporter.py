@@ -35,12 +35,18 @@ class MTC(object):
         #self.mtc = mytonctrl.MyTonCore()
         #self.mtc.ton = mytonctrl.MyTonCore()
 
+    def lite_client_run(self, cmd, timeout=30):
+        lite_client = self.mtc.liteClient
+        if hasattr(lite_client, 'run'):
+            return lite_client.run(cmd, timeout=timeout)
+        return lite_client.Run(cmd, timeout=timeout)
+
     def get_validators_load(self, start, end):
 
         assert start < end, 'start time should be less than end time'
 
         cmd = "checkloadall {start} {end}".format(end=end, start=start)
-        result = self.mtc.liteClient.Run(cmd, timeout=30)
+        result = self.lite_client_run(cmd, timeout=30)
         lines = result.split('\n')
         data = dict()
         for line in lines:
@@ -247,7 +253,7 @@ class Reporter(MTC):
     def run_with_retry(self, cmd, max_retries=3, timeout=30):
         for attempt in range(max_retries):
             try:
-                result = self.mtc.liteClient.Run(cmd, timeout=timeout)
+                result = self.lite_client_run(cmd, timeout=timeout)
                 return result
             except Exception as e:
                 self.log.warning(f"Attempt {attempt + 1} failed: {e}")
