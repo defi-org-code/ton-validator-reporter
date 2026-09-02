@@ -12,6 +12,7 @@ import traceback
 from logging import Formatter, getLogger, StreamHandler
 import copy
 import math
+import re
 import requests
 import subprocess
 
@@ -40,6 +41,90 @@ class MTC(object):
         if hasattr(lite_client, 'run'):
             return lite_client.run(cmd, timeout=timeout)
         return lite_client.Run(cmd, timeout=timeout)
+
+    def get_value(self, obj, key, default=None):
+        if isinstance(obj, dict):
+            return obj.get(key, default)
+        return getattr(obj, key, default)
+
+    def parse_config_int(self, result, key):
+        match = re.search(rf"{re.escape(key)}:(\d+)", result)
+        if not match:
+            raise ValueError(f"failed to parse {key} from config")
+        return int(match.group(1))
+
+    def get_config(self, config_id):
+        if hasattr(self.mtc, 'GetConfig'):
+            return self.mtc.GetConfig(config_id)
+        return self.mtc.get_config(config_id)
+
+    def get_config15(self):
+        if hasattr(self.mtc, 'GetConfig15'):
+            return self.mtc.GetConfig15()
+
+        if hasattr(self.mtc, 'get_config_15'):
+            config15 = self.mtc.get_config_15()
+            return {
+                "validatorsElectedFor": self.get_value(config15, "validators_elected_for"),
+                "electionsStartBefore": self.get_value(config15, "elections_start_before"),
+                "electionsEndBefore": self.get_value(config15, "elections_end_before"),
+                "stakeHeldFor": self.get_value(config15, "stake_held_for"),
+            }
+
+        result = self.lite_client_run("getconfig 15")
+        return {
+            "validatorsElectedFor": self.parse_config_int(result, "validators_elected_for"),
+            "electionsStartBefore": self.parse_config_int(result, "elections_start_before"),
+            "electionsEndBefore": self.parse_config_int(result, "elections_end_before"),
+            "stakeHeldFor": self.parse_config_int(result, "stake_held_for"),
+        }
+
+    def get_config34(self):
+        if hasattr(self.mtc, 'GetConfig34'):
+            return self.mtc.GetConfig34()
+
+        if hasattr(self.mtc, 'get_config_34'):
+            config34 = self.mtc.get_config_34()
+            validators = []
+            for validator in self.get_value(config34, "validators", []):
+                validators.append({
+                    "adnlAddr": self.get_value(validator, "adnl_addr"),
+                    "pubkey": self.get_value(validator, "pubkey"),
+                    "weight": self.get_value(validator, "weight"),
+                })
+            return {
+                "totalValidators": self.get_value(config34, "total_validators"),
+                "mainValidators": self.get_value(config34, "main_validators"),
+                "startWorkTime": self.get_value(config34, "start_work_time"),
+                "endWorkTime": self.get_value(config34, "end_work_time"),
+                "totalWeight": self.get_value(config34, "total_weight"),
+                "validators": validators,
+            }
+
+        result = self.lite_client_run("getconfig 34")
+        config34 = dict()
+        config34["totalValidators"] = int(parse(result, "total:", ' '))
+        config34["mainValidators"] = int(parse(result, "main:", ' '))
+        config34["startWorkTime"] = int(parse(result, "utime_since:", ' '))
+        config34["endWorkTime"] = int(parse(result, "utime_until:", ' '))
+        config34["totalWeight"] = int(parse(result, "total_weight:", ' '))
+        lines = result.split('\n')
+        validators = list()
+        for line in lines:
+            if "public_key:" in line:
+                validatorAdnlAddr = parse(line, "adnl_addr:x", ')')
+                pubkey = parse(line, "pubkey:x", ')')
+                try:
+                    validatorWeight = int(parse(line, "weight:", ' '))
+                except ValueError:
+                    validatorWeight = int(parse(line, "weight:", ')'))
+                buff = dict()
+                buff["adnlAddr"] = validatorAdnlAddr
+                buff["pubkey"] = pubkey
+                buff["weight"] = validatorWeight
+                validators.append(buff)
+        config34["validators"] = validators
+        return config34
 
     def get_validators_load(self, start, end):
 
@@ -512,7 +597,10 @@ class Reporter(MTC):
     def find_myself(self, validators: list) -> dict:
         adnl_addr = self.mtc.GetAdnlAddr()
         for validator in validators:
-            if validator.get("adnlAddr") == adnl_addr:
+            validator_adnl_addr = self.get_value(validator, "adnlAddr")
+            if validator_adnl_addr is None:
+                validator_adnl_addr = self.get_value(validator, "adnl_addr")
+            if validator_adnl_addr == adnl_addr:
                 return validator
         return None
     
@@ -523,7 +611,11 @@ class Reporter(MTC):
         validator = self.find_myself(validators)        
         if validator is None:
             return (0, 0, 0)
-        return (validator.get('efficiency') , validator.blocks_created, validator.blocks_expected)
+        return (
+            self.get_value(validator, 'efficiency', 0),
+            self.get_value(validator, 'blocks_created', 0),
+            self.get_value(validator, 'blocks_expected', 0),
+        )
 
     def check_fine_changes(self, mytoncore_db):
 
@@ -670,7 +762,7 @@ class Reporter(MTC):
 
     def get_global_version(self):
 
-        config8 = self.mtc.GetConfig(8)
+        config8 = self.get_config(8)
         try:
             version = config8['_']['version']
             capabilities = config8['_']['capabilities']
@@ -843,8 +935,8 @@ class Reporter(MTC):
                 free_nominator_balance = self.free_nominator_balance(single_nominator)
                 free_validator_balance = self.free_validator_balance(validator_account)
                 stats = self.get_stats()
-                config15 = self.mtc.GetConfig15()
-                config34 = self.mtc.GetConfig34()
+                config15 = self.get_config15()
+                config34 = self.get_config34()
                 validation_started_at = str(config34['startWorkTime'])
                 validation_end_at = str(config34['endWorkTime'])
                 past_election_ids = self.past_election_ids(mytoncore_db)
